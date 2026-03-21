@@ -51,33 +51,41 @@ const IncidentDetail = () => {
     }, [cleanId]);
 
     const handleAction = async (newStatus) => {
-        try {
-            const statusLabel = newStatus === 'Rejected' ? 'Rejected - Unconventional Report' : newStatus;
-            const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
-            const token = localStorage.getItem('token');
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
+        const token = localStorage.getItem('token');
+        let statusLabel;
+        let navigateAfter = false;
 
-            const res = await fetch(`${API_BASE_URL}/api/reports/update-status`, {
-                method: 'POST',
+        if (newStatus === 'Rejected') {
+            statusLabel = 'Rejected - Unconventional Report';
+        } else if (newStatus === 'Broadcast') {
+            statusLabel = 'In Progress';
+            navigateAfter = true;
+        } else {
+            statusLabel = newStatus;
+        }
+
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/tickets/${cleanId}/status`, {
+                method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
                     ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                 },
-                body: JSON.stringify({ reportId: cleanId, status: statusLabel })
+                body: JSON.stringify({ status: statusLabel })
             });
 
-            if (res.ok) {
-                setReport(prev => prev ? { ...prev, status: statusLabel } : prev);
-                toast.success(`Report ${newStatus}`);
+            if (!res.ok) throw new Error('API update failed');
 
-                if (newStatus === 'Accepted') {
-                    navigate('/admin/broadcast', { state: { incidentId: cleanId } });
-                }
-            } else {
-                throw new Error('API update failed');
+            setReport(prev => prev ? { ...prev, status: statusLabel } : prev);
+            toast.success(`Report ${newStatus}`);
+
+            if (newStatus === 'Accepted' || navigateAfter) {
+                navigate('/admin/broadcast', { state: { selectedTicketId: cleanId, incidentId: cleanId } });
             }
         } catch (error) {
-            console.error("[IncidentDetail] Status update error:", error);
-            toast.error("Failed to update status");
+            console.error('[IncidentDetail] Status update error:', error);
+            toast.error('Failed to update status');
         }
     };
 

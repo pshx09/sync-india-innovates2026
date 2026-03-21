@@ -25,7 +25,7 @@ export default function Login() {
             const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: email.trim(), password: password.trim() })
+                body: JSON.stringify({ email: email.trim(), password: password.trim(), selectedRole: userType })
             });
 
             const data = await response.json();
@@ -218,8 +218,11 @@ export default function Login() {
                                 </div>
                             </div>
 
-                            <button type="button" onClick={handleGoogleLogin} className="w-full flex justify-center items-center border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold py-3.5 bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-900 dark:text-white transition-all">
+                            {/* <button type="button" onClick={handleGoogleLogin} className="w-full flex justify-center items-center border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold py-3.5 bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-900 dark:text-white transition-all">
                                 Continue with Google
+                            </button> */}
+                            <button type="button" disabled title="Coming Soon" className="w-full flex justify-center items-center border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold py-3.5 bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 cursor-not-allowed transition-all">
+                                Continue with Google (Coming Soon)
                             </button>
                         </form>
 

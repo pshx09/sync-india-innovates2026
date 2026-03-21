@@ -4,43 +4,10 @@ import { MoreVertical, MapPin, AlertTriangle, CheckCircle, Sparkles, Plus, Searc
 import AdminLayout from './AdminLayout';
 import { useAuth } from '../../context/AuthContext';
 import { getDatabase, ref, onValue, update } from 'firebase/database';
-import { mappls, mappls_plugin } from 'mappls-web-maps';
-
-const mapplsClassObject = new mappls();
-const mapplsPluginObject = new mappls_plugin();
+import CommandCenterMap from '../../components/CommandCenterMap';
 import { toast } from 'react-hot-toast';
 import { sanitizeKey } from '../../utils/firebaseUtils';
 
-const mapContainerStyle = {
-    width: '100%',
-    height: '100%'
-};
-
-const defaultCenter = {
-    lat: 22.5726,
-    lng: 88.3639
-};
-
-
-// Helper: Haversine distance in meters
-const haversineDistance = (coords1, coords2) => {
-    function toRad(x) {
-        return (x * Math.PI) / 180;
-    }
-
-    const R = 6371e3; // Earth radius in meters
-    const dLat = toRad(coords2.lat - coords1.lat);
-    const dLon = toRad(coords2.lng - coords1.lng);
-    const lat1 = toRad(coords1.lat);
-    const lat2 = toRad(coords2.lat);
-
-    const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
-};
 
 const AdminDashboard = () => {
     const { currentUser } = useAuth();
@@ -54,34 +21,6 @@ const AdminDashboard = () => {
     const [recentReports, setRecentReports] = useState([]);
     const [selectedIncident, setSelectedIncident] = useState(null);
     const [selectedCluster, setSelectedCluster] = useState(null);
-    const [map, setMap] = useState(null);
-
-    const [isLoaded, setIsLoaded] = useState(false);
-    const mapRef = React.useRef(null);
-    const markersRef = React.useRef([]);
-
-    useEffect(() => {
-        const loadObject = { map: true };
-        mapplsClassObject.initialize(import.meta.env.VITE_MAPPLS_MAP_KEY, loadObject, () => {
-            setIsLoaded(true);
-        });
-    }, []);
-
-    useEffect(() => {
-        if (isLoaded && !mapRef.current) {
-            const newMap = mapplsClassObject.Map({
-                id: "mappls-admin-dashboard",
-                properties: {
-                    center: [22.5726, 88.3639],
-                    zoom: 12,
-                }
-            });
-            newMap.on("load", () => {
-                mapRef.current = newMap;
-                setMap(newMap);
-            });
-        }
-    }, [isLoaded]);
 
     // ====== DATA PROCESSING (must come before marker useEffect) ======
     const processReports = (reportsArray) => {
@@ -95,7 +34,7 @@ const AdminDashboard = () => {
             if (status === 'Pending' || status === 'Open' || status === 'Pending Address') open++;
             if (status === 'Resolved' || status === 'Completed') resolved++;
             if (report.aiConfidence > 80 && status === 'Pending') flagged++;
-            if (report.priority === 'High') high++;
+            if (report.severity === 'High') high++;
         });
 
         setStats({
@@ -111,72 +50,7 @@ const AdminDashboard = () => {
         }
     };
 
-    // ====== CLUSTERING (must come before marker useEffect) ======
-    const clusters = React.useMemo(() => {
-        const clustered = [];
-        const visited = new Set();
-        const reports = recentReports || [];
 
-        reports.forEach((report) => {
-            if (visited.has(report.id)) return;
-            if (!report.location || !report.location.lat || !report.location.lng) return;
-
-            const cluster = [report];
-            visited.add(report.id);
-
-            reports.forEach((other) => {
-                if (visited.has(other.id)) return;
-                if (!other.location || !other.location.lat || !other.location.lng) return;
-
-                const dist = haversineDistance(
-                    { lat: report.location.lat, lng: report.location.lng },
-                    { lat: other.location.lat, lng: other.location.lng }
-                );
-
-                if (dist <= 300) {
-                    cluster.push(other);
-                    visited.add(other.id);
-                }
-            });
-
-            clustered.push(cluster);
-        });
-
-        return clustered;
-    }, [recentReports]);
-
-    // ====== MAP MARKERS (uses clusters — must come AFTER clusters) ======
-    useEffect(() => {
-        if (!mapRef.current || clusters.length === 0) return;
-        
-        // Clear old markers
-        markersRef.current.forEach(m => {
-            if (m && typeof m.remove === 'function') m.remove();
-        });
-        markersRef.current = [];
-
-        // Plot new markers
-        clusters.forEach(cluster => {
-            const mainIncident = cluster[0];
-            const lat = parseFloat(mainIncident.location.lat);
-            const lng = parseFloat(mainIncident.location.lng);
-            if (isNaN(lat) || isNaN(lng)) return;
-            
-            let htmlContent = `<div style="background-color: ${mainIncident.status === 'Resolved' ? '#22c55e' : '#ef4444'}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`;
-
-            if (cluster.length > 1) {
-                htmlContent = `<div style="background-color: #ef4444; color: white; width: 30px; height: 30px; border-radius: 50%; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 12px; z-index: 100;">${cluster.length}</div>`;
-            }
-            
-            const marker = mapplsClassObject.Marker({
-                map: mapRef.current,
-                position: { lat, lng },
-                html: htmlContent
-            });
-            
-            markersRef.current.push(marker);
-        });
-    }, [clusters, map]);
 
     // ====== DATA FETCHING (JWT Auth + Department-Aware + Firebase Fallback) ======
     useEffect(() => {
@@ -221,43 +95,48 @@ const AdminDashboard = () => {
 
     const handleUpdateStatus = async (newStatus) => {
         if (!selectedIncident) return;
-        try {
-            const statusLabel = newStatus === 'Rejected' ? 'Rejected - Unconventional Report' : newStatus;
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
+        const token = localStorage.getItem('token');
+        let statusLabel;
+        let navigateAfter = false;
 
-            // Use Backend API to bypass client permission rules
-            const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${API_BASE_URL}/api/reports/update-status`, {
-                method: 'POST',
-                headers: { 
+        // Map action types to DB status strings
+        if (newStatus === 'Rejected') {
+            statusLabel = 'Rejected - Unconventional Report';
+        } else if (newStatus === 'Broadcast') {
+            statusLabel = 'In Progress';
+            navigateAfter = true;
+        } else {
+            statusLabel = newStatus; // 'Accepted', 'Resolved', etc.
+        }
+
+        try {
+            // Use RESTful PATCH endpoint
+            const res = await fetch(`${API_BASE_URL}/api/tickets/${selectedIncident.id}/status`, {
+                method: 'PATCH',
+                headers: {
                     'Content-Type': 'application/json',
                     ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                 },
-                body: JSON.stringify({
-                    reportId: selectedIncident.id,
-                    status: statusLabel,
-                    department: currentUser.department
-                })
+                body: JSON.stringify({ status: statusLabel })
             });
 
-            if (!res.ok) throw new Error("API Update Failed");
+            if (!res.ok) throw new Error('API Update Failed');
 
             toast.success(`Incident marked as ${newStatus}`);
 
             // Update local state for immediate feedback
             setSelectedIncident(prev => ({ ...prev, status: statusLabel }));
-
-            // Also update the list local state to reflect change immediately
             setRecentReports(prev => prev.map(r =>
                 r.id === selectedIncident.id ? { ...r, status: statusLabel } : r
             ));
 
-            if (newStatus === 'Accepted') {
-                navigate('/admin/broadcast', { state: { incidentId: selectedIncident.id } });
+            if (navigateAfter) {
+                navigate('/admin/broadcast', { state: { selectedTicketId: selectedIncident.id, incidentId: selectedIncident.id } });
             }
         } catch (error) {
-            console.error("Error updating status:", error);
-            toast.error("Failed to update status");
+            console.error('Error updating status:', error);
+            toast.error('Failed to update status');
         }
     };
 
@@ -318,12 +197,8 @@ const AdminDashboard = () => {
                                     <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> Resolved</span>
                                 </div>
                             </div>
-                            <div className="h-[400px] w-full bg-slate-100 dark:bg-slate-900 relative overflow-hidden rounded-b-xl">
-                                {isLoaded ? (
-                                    <div id="mappls-admin-dashboard" style={{ width: '100%', height: '100%' }}></div>
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center">Loading Map...</div>
-                                )}
+                            <div className="h-[400px] w-full bg-slate-100 dark:bg-slate-900 relative rounded-b-xl flex flex-col">
+                                <CommandCenterMap incidents={recentReports} />
                             </div>
                         </div>
 
@@ -356,7 +231,7 @@ const AdminDashboard = () => {
                                                 img={report.imageUrl}
                                                 mediaType={report.mediaType}
                                                 type={report.type || report.category || "General"}
-                                                priority={report.priority || "Medium"}
+                                                priority={report.severity || "Medium"}
                                                 status={report.status || "Pending"}
                                                 isSelected={selectedIncident?.id === report.id}
                                                 onClick={() => setSelectedIncident(report)}
@@ -382,8 +257,8 @@ const AdminDashboard = () => {
                                         <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Incident Profile</div>
                                         <h2 className="text-2xl font-black text-slate-900 dark:text-white">#{selectedIncident.id.slice(-6)}</h2>
                                     </div>
-                                    <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-tighter ${selectedIncident.priority === 'High' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>
-                                        {selectedIncident.priority} Priority
+                                    <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-tighter ${selectedIncident.severity === 'High' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>
+                                        {selectedIncident.severity} Priority
                                     </span>
                                 </div>
 
@@ -443,11 +318,12 @@ const AdminDashboard = () => {
                                 <div className="bg-gradient-to-br from-indigo-50/50 to-blue-50/50 dark:from-blue-900/20 dark:to-indigo-900/10 rounded-xl p-4 border border-blue-100/50 dark:border-blue-500/20 mb-6">
                                     <div className="flex items-center gap-2 mb-2">
                                         <Sparkles size={16} className="text-blue-600 dark:text-blue-400" />
-                                        <span className="font-bold text-blue-900 dark:text-blue-100 text-xs">Gemini AI Detection</span>
+                                        <span className="font-bold text-blue-900 dark:text-blue-100 text-xs">Nagar AI Forensics</span>
                                     </div>
                                     <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
                                         {(() => {
-                                            if (!selectedIncident.aiAnalysis || selectedIncident.aiAnalysis === "Not Analyzed") {
+                                            const summary = selectedIncident.ai_summary;
+                                            if (!summary || summary === "Not Analyzed") {
                                                 if (selectedIncident.source === 'WhatsApp') {
                                                     return `System detected a ${selectedIncident.type} issue with ${selectedIncident.aiConfidence || 0}% confidence (Simulated).`;
                                                 }
@@ -455,16 +331,16 @@ const AdminDashboard = () => {
                                             }
                                             try {
                                                 // Try to parse if it's a JSON string
-                                                const analysis = typeof selectedIncident.aiAnalysis === 'string' && selectedIncident.aiAnalysis.startsWith('{')
-                                                    ? JSON.parse(selectedIncident.aiAnalysis)
-                                                    : selectedIncident.aiAnalysis;
+                                                const analysis = typeof summary === 'string' && summary.startsWith('{')
+                                                    ? JSON.parse(summary)
+                                                    : summary;
 
                                                 if (typeof analysis === 'object') {
                                                     return analysis.description || analysis.issue || "Detailed analysis available.";
                                                 }
                                                 return analysis;
                                             } catch (e) {
-                                                return selectedIncident.aiAnalysis;
+                                                return summary;
                                             }
                                         })()}
                                     </p>
@@ -486,7 +362,12 @@ const AdminDashboard = () => {
                                     </div>
                                     <div className="flex items-start gap-1.5 mt-2 text-xs text-slate-500 dark:text-slate-400">
                                         <MapPin size={14} className="shrink-0 mt-0.5" />
-                                        <span>{selectedIncident.location?.address || 'No address available'}</span>
+                                        <div className="flex flex-col">
+                                            <span>{selectedIncident.location?.address || 'No address available'}</span>
+                                            {selectedIncident.location?.lat && selectedIncident.location?.lng && (
+                                                <span className="text-[10px] font-mono opacity-80 mt-0.5">Lat: {selectedIncident.location.lat}, Lng: {selectedIncident.location.lng}</span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
 
@@ -500,19 +381,19 @@ const AdminDashboard = () => {
 
                                 {/* Action Buttons */}
                                 <div className="mt-auto space-y-3">
-                                    {(selectedIncident.status === 'Pending' || !selectedIncident.status) ? (
-                                        <div className="grid grid-cols-2 gap-3">
+                                    {(selectedIncident.status === 'Pending' || selectedIncident.status === 'Open' || !selectedIncident.status) ? (
+                                        <div className="space-y-3">
                                             <button
-                                                onClick={() => handleUpdateStatus('Rejected')}
-                                                className="py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-600 dark:hover:text-red-400 text-slate-700 dark:text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
+                                                onClick={() => handleUpdateStatus('Broadcast')}
+                                                className="w-full py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-2xl font-black flex items-center justify-center gap-3 transition-all shadow-xl shadow-green-600/30 active:scale-95 text-sm tracking-wide"
                                             >
-                                                <X size={18} /> Reject
+                                                <span className="text-lg">📢</span> Fix & Broadcast
                                             </button>
                                             <button
-                                                onClick={() => handleUpdateStatus('Accepted')}
-                                                className="py-3 bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95"
+                                                onClick={() => handleUpdateStatus('Rejected')}
+                                                className="w-full py-4 bg-white dark:bg-slate-700 border-2 border-red-200 dark:border-red-900/40 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 rounded-2xl font-black flex items-center justify-center gap-3 transition-all active:scale-95 text-sm tracking-wide"
                                             >
-                                                <CheckSquare size={18} /> Accept
+                                                <span className="text-lg">❌</span> Reject / Ignore
                                             </button>
                                         </div>
                                     ) : (selectedIncident.status === 'Accepted' || selectedIncident.status === 'Verified') ? (

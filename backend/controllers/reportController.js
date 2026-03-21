@@ -315,22 +315,26 @@ exports.getAllReports = async (req, res) => {
         if (adminDept && adminDept !== 'General' && adminDept !== 'All') {
             // Department-scoped admin: only their tickets
             query = `
-                SELECT id, user_phone, issue_type, severity, image_url, status, created_at,
-                       description, department,
-                       ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
-                FROM tickets
-                WHERE department = $1
-                ORDER BY created_at DESC;
+                SELECT t.id, t.user_phone, t.issue_type, t.severity, t.image_url, t.status, t.created_at,
+                       t.description, t.department, t.ai_summary, t.ai_confidence,
+                       ST_Y(t.location::geometry) as lat, ST_X(t.location::geometry) as lng,
+                       u.name as user_name
+                FROM tickets t
+                LEFT JOIN users u ON t.user_id = u.id
+                WHERE t.department = $1
+                ORDER BY t.created_at DESC;
             `;
             values = [adminDept];
         } else {
             // Superadmin: all tickets
             query = `
-                SELECT id, user_phone, issue_type, severity, image_url, status, created_at,
-                       description, department,
-                       ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
-                FROM tickets
-                ORDER BY created_at DESC;
+                SELECT t.id, t.user_phone, t.issue_type, t.severity, t.image_url, t.status, t.created_at,
+                       t.description, t.department, t.ai_summary, t.ai_confidence,
+                       ST_Y(t.location::geometry) as lat, ST_X(t.location::geometry) as lng,
+                       u.name as user_name
+                FROM tickets t
+                LEFT JOIN users u ON t.user_id = u.id
+                ORDER BY t.created_at DESC;
             `;
             values = [];
         }
@@ -353,6 +357,9 @@ exports.getAllReports = async (req, res) => {
                 description: row.description,
                 department: row.department,
                 user_phone: row.user_phone,
+                userName: row.user_name || 'Anonymous Citizen',
+                ai_summary: row.ai_summary || '',
+                aiConfidence: row.ai_confidence || 85,
                 image_url: mediaPath,
                 imageUrl: fullMediaUrl,
                 mediaType,
@@ -469,12 +476,14 @@ exports.getUserReports = async (req, res) => {
         console.log(`[BACKEND-PG] Fetching reports for User ID: ${userId}`);
 
         const query = `
-            SELECT id, user_phone, issue_type, severity, image_url, status, created_at,
-                   description, department,
-                   ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
-            FROM tickets
-            WHERE user_id = $1
-            ORDER BY created_at DESC;
+            SELECT t.id, t.user_phone, t.issue_type, t.severity, t.image_url, t.status, t.created_at,
+                   t.description, t.department, t.ai_summary, t.ai_confidence,
+                   ST_Y(t.location::geometry) as lat, ST_X(t.location::geometry) as lng,
+                   u.name as user_name
+            FROM tickets t
+            LEFT JOIN users u ON t.user_id = u.id
+            WHERE t.user_id = $1
+            ORDER BY t.created_at DESC;
         `;
         const result = await pgDb.query(query, [userId]);
         
@@ -495,6 +504,9 @@ exports.getUserReports = async (req, res) => {
                 description: row.description,
                 department: row.department,
                 user_phone: row.user_phone,
+                userName: row.user_name || 'Anonymous Citizen',
+                ai_summary: row.ai_summary || '',
+                aiConfidence: row.ai_confidence || 85,
                 image_url: mediaPath,
                 imageUrl: fullMediaUrl,
                 mediaType,
@@ -519,11 +531,13 @@ exports.getSingleReport = async (req, res) => {
     const { id } = req.params;
     try {
         const query = `
-            SELECT id, user_phone, issue_type, severity, image_url, status, created_at,
-                   description, department,
-                   ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
-            FROM tickets
-            WHERE id = $1;
+            SELECT t.id, t.user_phone, t.issue_type, t.severity, t.image_url, t.status, t.created_at,
+                   t.description, t.department, t.ai_summary, t.ai_confidence,
+                   ST_Y(t.location::geometry) as lat, ST_X(t.location::geometry) as lng,
+                   u.name as user_name
+            FROM tickets t
+            LEFT JOIN users u ON t.user_id = u.id
+            WHERE t.id = $1;
         `;
         const result = await pgDb.query(query, [id]);
         if (result.rows.length === 0) return res.status(404).json({ error: "Report not found" });
@@ -544,6 +558,9 @@ exports.getSingleReport = async (req, res) => {
             description: row.description,
             department: row.department,
             user_phone: row.user_phone,
+            userName: row.user_name || 'Anonymous Citizen',
+            ai_summary: row.ai_summary || '',
+            aiConfidence: row.ai_confidence || 85,
             image_url: mediaPath,
             imageUrl: fullMediaUrl,
             mediaType,
@@ -566,12 +583,14 @@ exports.getDepartmentReports = async (req, res) => {
     const { department } = req.params;
     try {
         const query = `
-            SELECT id, user_phone, issue_type, severity, image_url, status, created_at,
-                   description, department,
-                   ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
-            FROM tickets
-            WHERE department = $1
-            ORDER BY created_at DESC;
+            SELECT t.id, t.user_phone, t.issue_type, t.severity, t.image_url, t.status, t.created_at,
+                   t.description, t.department, t.ai_summary, t.ai_confidence,
+                   ST_Y(t.location::geometry) as lat, ST_X(t.location::geometry) as lng,
+                   u.name as user_name
+            FROM tickets t
+            LEFT JOIN users u ON t.user_id = u.id
+            WHERE t.department = $1
+            ORDER BY t.created_at DESC;
         `;
         const result = await pgDb.query(query, [department]);
         const reports = result.rows.map(row => {
@@ -590,6 +609,9 @@ exports.getDepartmentReports = async (req, res) => {
                 description: row.description,
                 department: row.department,
                 user_phone: row.user_phone,
+                userName: row.user_name || 'Anonymous Citizen',
+                ai_summary: row.ai_summary || '',
+                aiConfidence: row.ai_confidence || 85,
                 image_url: mediaPath,
                 imageUrl: fullMediaUrl,
                 mediaType,

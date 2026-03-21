@@ -231,8 +231,14 @@ const ReportIssue = () => {
             formData.append('user_phone', auth.currentUser?.phoneNumber || 'Anonymous');
 
             // Send to backend
-            const response = await fetch('http://localhost:5001/api/tickets', {
+            const token = localStorage.getItem('token');
+            const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
+            
+            const response = await fetch(`${API_BASE_URL}/api/tickets`, {
                 method: 'POST',
+                headers: {
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                },
                 body: formData
             });
 

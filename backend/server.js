@@ -57,6 +57,7 @@ app.use('/api/upload', require('./routes/uploadRoutes'));
 // app.use('/api/alerts', require('./routes/alertRoutes'));
 app.use('/api/routes', require('./routes/routeRoutes'));
 app.use('/api/tickets', require('./routes/ticketRoutes'));
+app.use('/api/users', require('./routes/userRoutes'));
 
 // 2. Health Check
 app.get('/', (req, res) => {

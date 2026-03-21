@@ -19,7 +19,7 @@ const MyReports = () => {
             }
 
             const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
-            const url = `${API_BASE_URL}/api/reports/my-reports`;
+            const url = `${API_BASE_URL}/api/tickets/my-reports`;
             console.log(`[FRONTEND] Fetching reports from: ${url}`);
 
             try {

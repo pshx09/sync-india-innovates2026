@@ -265,9 +265,10 @@ exports.resendOTP = async (req, res) => {
 // ============================================================
 exports.loginUser = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, password, selectedRole } = req.body;
         console.log("🔐 Login attempt for:", email);
         if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+        if (!selectedRole) return res.status(400).json({ error: "Role selection is required" });
 
         const result = await db.query('SELECT * FROM users WHERE email = $1', [email]);
         const user = result.rows[0];
@@ -281,6 +282,12 @@ exports.loginUser = async (req, res) => {
         if (!isMatch) {
             console.log("❌ Login failed: password mismatch for:", email);
             return res.status(401).json({ error: "Invalid email or password" });
+        }
+
+        // Strict Role Validation
+        if (user.role !== selectedRole) {
+            console.log(`❌ Login failed: role mismatch. Selected: ${selectedRole}, Actual: ${user.role}`);
+            return res.status(403).json({ error: `Account exists, but is not registered as ${selectedRole === 'admin' ? 'Admin/Official' : 'Citizen'}.` });
         }
 
         const token = jwt.sign(
@@ -308,7 +315,7 @@ exports.loginUser = async (req, res) => {
 exports.getProfile = async (req, res) => {
     try {
         const userId = req.user.id;
-        const result = await db.query('SELECT id, email, name, first_name as "firstName", last_name as "lastName", phone, address, city, role, profile_pic as "profilePic", points FROM users WHERE id = $1', [userId]);
+        const result = await db.query('SELECT id, email, name, first_name as "firstName", last_name as "lastName", phone, address, city, role, points FROM users WHERE id = $1', [userId]);
         
         if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
         
@@ -322,7 +329,7 @@ exports.getProfile = async (req, res) => {
 exports.updateProfile = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { firstName, lastName, phone, address, profilePic } = req.body;
+        const { firstName, lastName, phone, address } = req.body;
         
         const updateQuery = `
             UPDATE users 
@@ -330,13 +337,12 @@ exports.updateProfile = async (req, res) => {
                 last_name = COALESCE($2, last_name),
                 phone = COALESCE($3, phone),
                 address = COALESCE($4, address),
-                profile_pic = COALESCE($5, profile_pic),
                 name = COALESCE($1 || ' ' || $2, name)
             WHERE id = $6
-            RETURNING id, email, name, first_name as "firstName", last_name as "lastName", phone, address, city, role, profile_pic as "profilePic", points;
+            RETURNING id, email, name, first_name as "firstName", last_name as "lastName", phone, address, city, role, points;
         `;
         
-        const result = await db.query(updateQuery, [firstName, lastName, phone, address, profilePic, userId]);
+        const result = await db.query(updateQuery, [firstName, lastName, phone, address, userId]);
         
         if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
         

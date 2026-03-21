@@ -25,7 +25,8 @@ const Profile = () => {
     const [editedData, setEditedData] = React.useState({});
     const [uploadingPic, setUploadingPic] = React.useState(false);
     const fileInputRef = React.useRef(null);
-    const [weeklyActivity, setWeeklyActivity] = React.useState([0, 0, 0, 0, 0, 0, 0]); // Last 7 days
+    const [weeklyActivity, setWeeklyActivity] = React.useState([0, 0, 0, 0, 0, 0, 0]);
+    const [userRank, setUserRank] = React.useState('—');
 
     // Sync local state when Auth finishes loading user
     React.useEffect(() => {
@@ -91,6 +92,19 @@ const Profile = () => {
 
                     setWeeklyActivity(activity);
                     setUserData(prev => ({ ...prev, reportCount: data.stats.total, badges: newBadges, points: data.karma }));
+                }
+
+                // 3. Fetch real rank from /api/users/me/stats
+                const rankRes = await fetch(`${API_BASE_URL}/api/users/me/stats`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (rankRes.ok) {
+                    const rankData = await rankRes.json();
+                    setUserRank(`#${rankData.rank}`);
+                    // Also update points from stats if more accurate
+                    if (rankData.points) {
+                        setUserData(prev => ({ ...prev, points: rankData.points }));
+                    }
                 }
 
             } catch (error) {
@@ -232,7 +246,7 @@ const Profile = () => {
                         <div className="grid grid-cols-3 gap-2 w-full mb-6">
                             <StatBox label="Reports" value={userData.reportCount} />
                             <StatBox label="Points" value={userData.points} highlighted />
-                            <StatBox label="Rank" value="#3" />
+                            <StatBox label="Rank" value={userRank} />
                         </div>
 
                         <button

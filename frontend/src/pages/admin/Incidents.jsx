@@ -52,32 +52,29 @@ const IncidentList = () => {
     }, [currentUser?.department]);
 
     const handleUpdateStatus = async (id, newStatus) => {
-        try {
-            const statusLabel = newStatus === 'Rejected' ? 'Rejected - Unconventional Report' : newStatus;
-            const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
-            const token = localStorage.getItem('token');
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
+        const token = localStorage.getItem('token');
+        const statusLabel = newStatus === 'Rejected' ? 'Rejected - Unconventional Report' : newStatus;
 
-            const res = await fetch(`${API_BASE_URL}/api/reports/update-status`, {
-                method: 'POST',
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/tickets/${id}/status`, {
+                method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
                     ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                 },
-                body: JSON.stringify({ reportId: id, status: statusLabel })
+                body: JSON.stringify({ status: statusLabel })
             });
 
-            if (res.ok) {
-                toast.success(`Incident marked as ${newStatus}`);
-                // Update local state
-                setIncidents(prev => prev.map(inc =>
-                    inc.id === id ? { ...inc, status: statusLabel } : inc
-                ));
-            } else {
-                throw new Error('API update failed');
-            }
+            if (!res.ok) throw new Error('API update failed');
+
+            toast.success(`Incident marked as ${newStatus}`);
+            setIncidents(prev => prev.map(inc =>
+                inc.id === id ? { ...inc, status: statusLabel } : inc
+            ));
         } catch (error) {
-            console.error("[Incidents] Status update error:", error);
-            toast.error("Failed to update status");
+            console.error('[Incidents] Status update error:', error);
+            toast.error('Failed to update status');
         }
     };
 
@@ -171,8 +168,8 @@ const IncidentList = () => {
                                     />
                                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
                                     <div className="absolute top-4 right-4 flex gap-2">
-                                        <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest shadow-lg backdrop-blur-md ${incident.priority === 'High' ? 'bg-red-500/90 text-white' : 'bg-blue-600/90 text-white'}`}>
-                                            {incident.priority || 'Normal'} PRIORITY
+                                        <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest shadow-lg backdrop-blur-md ${incident.severity === 'High' ? 'bg-red-500/90 text-white' : 'bg-blue-600/90 text-white'}`}>
+                                            {incident.severity || 'Normal'} PRIORITY
                                         </span>
                                     </div>
                                     <div className="absolute bottom-4 left-4">
@@ -275,8 +272,8 @@ const IncidentList = () => {
                                             </span>
                                         </td>
                                         <td className="px-6 py-5">
-                                            <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest ${incident.priority === 'High' ? 'text-red-600 bg-red-50' : 'text-blue-600 bg-blue-50'}`}>
-                                                {incident.priority || 'Normal'}
+                                            <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest ${incident.severity === 'High' ? 'text-red-600 bg-red-50' : 'text-blue-600 bg-blue-50'}`}>
+                                                {incident.severity || 'Normal'}
                                             </span>
                                         </td>
                                         <td className="px-6 py-5 text-right">

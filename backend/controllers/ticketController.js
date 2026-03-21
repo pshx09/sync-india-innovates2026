@@ -128,12 +128,16 @@ exports.createTicket = async (req, res) => {
 
         // ====== 5. Insert verified ticket into PostGIS ======
         const insertQuery = `
-            INSERT INTO tickets (user_id, user_phone, issue_type, severity, image_url, location, description, department)
-            VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($6, $7), 4326), $8, $9)
+            INSERT INTO tickets (user_id, user_phone, issue_type, severity, image_url, location, description, department, ai_summary, ai_confidence)
+            VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($6, $7), 4326), $8, $9, $10, $11)
             RETURNING id, user_id, user_phone, issue_type, severity, image_url, status, created_at, 
-                      ST_X(location::geometry) as lng, ST_Y(location::geometry) as lat, description, department;
+                      ST_X(location::geometry) as lng, ST_Y(location::geometry) as lat, description, department, ai_summary, ai_confidence;
         `;
         
+        // Convert AI float confidence (0.0–1.0) to integer percentage (0–100) for PostgreSQL INTEGER column
+        const rawConf = parseFloat(aiResult.confidence);
+        const confidenceInt = (!isNaN(rawConf) && rawConf <= 1) ? Math.round(rawConf * 100) : Math.round(rawConf || 0);
+
         const values = [
             req.user?.id || null, // Capture authenticated user ID if present
             user_phone || null, 
@@ -143,7 +147,9 @@ exports.createTicket = async (req, res) => {
             lng, 
             lat, 
             smart_description, 
-            autoAssignedDept
+            autoAssignedDept,
+            aiResult.ai_summary || "No AI summary",
+            confidenceInt
         ];
         
         const result = await db.query(insertQuery, values);
@@ -198,5 +204,89 @@ exports.getNearbyHazards = async (req, res) => {
     } catch (error) {
         console.error("Geo Filter Error:", error);
         res.status(500).json({ error: "Failed to fetch nearby hazards", details: error.message });
+    }
+};
+
+/**
+ * PATCH /api/tickets/:id/status — RESTful status update
+ * Accepts: { status: 'open' | 'pending' | 'in_progress' | 'accepted' | 'resolved' | 'rejected' }
+ */
+exports.updateTicketStatus = async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const VALID_STATUSES = ['open', 'pending', 'in_progress', 'accepted', 'resolved', 'rejected', 'Pending', 'Open', 'In Progress', 'Accepted', 'Resolved', 'Rejected', 'Rejected - Unconventional Report'];
+
+    if (!id || !status) {
+        return res.status(400).json({ error: "Missing ticket ID or status" });
+    }
+
+    if (!VALID_STATUSES.includes(status)) {
+        return res.status(400).json({ error: `Invalid status: '${status}'. Allowed: ${VALID_STATUSES.join(', ')}` });
+    }
+
+    try {
+        const updateQuery = `
+            UPDATE tickets SET status = $1 WHERE id = $2
+            RETURNING id, status, issue_type, severity, department, created_at;
+        `;
+        const result = await db.query(updateQuery, [status, id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: "Ticket not found" });
+        }
+
+        console.log(`[PATCH] Ticket ${id} status → ${status}`);
+        res.status(200).json({ message: "Status updated", ticket: result.rows[0] });
+    } catch (error) {
+        console.error("[PATCH] Update Ticket Status Error:", error);
+        res.status(500).json({ error: "Failed to update ticket status", details: error.message });
+    }
+};
+
+/**
+ * GET /api/tickets/my-reports — Citizen's own tickets (uses req.user.id from JWT)
+ */
+exports.getMyReports = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        const query = `
+            SELECT 
+                t.id, t.issue_type, t.severity, t.status, t.description, t.department,
+                t.image_url, t.ai_summary, t.ai_confidence, t.created_at,
+                ST_Y(t.location::geometry) AS lat,
+                ST_X(t.location::geometry) AS lng
+            FROM tickets t
+            WHERE t.user_id = $1
+            ORDER BY t.created_at DESC;
+        `;
+        const result = await db.query(query, [userId]);
+
+        const API_BASE = `${req.protocol}://${req.get('host')}`;
+
+        const reports = result.rows.map(row => ({
+            id: row.id,
+            type: row.issue_type,
+            severity: row.severity,
+            status: row.status,
+            description: row.description,
+            department: row.department,
+            imageUrl: row.image_url ? (row.image_url.startsWith('http') ? row.image_url : `${API_BASE}${row.image_url}`) : null,
+            mediaType: 'image',
+            ai_summary: row.ai_summary,
+            aiConfidence: row.ai_confidence,
+            createdAt: row.created_at,
+            location: {
+                lat: row.lat,
+                lng: row.lng,
+                address: row.description || 'Location available'
+            }
+        }));
+
+        res.status(200).json({ reports });
+    } catch (error) {
+        console.error("[GET] My Reports Error:", error);
+        res.status(500).json({ error: "Failed to fetch your reports", details: error.message });
     }
 };

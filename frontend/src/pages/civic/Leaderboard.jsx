@@ -1,74 +1,64 @@
-import React, { useState } from 'react';
-import { Trophy, Shield, Award, TrendingUp, Users, Crown } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Trophy, Shield, Award, TrendingUp, Users, Crown, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import CivicLayout from './CivicLayout';
-
-import { getDatabase, ref, onValue, query, orderByChild, limitToLast } from "firebase/database";
-import { auth } from '../../services/firebase';
+import { useAuth } from '../../context/AuthContext';
 
 const Leaderboard = () => {
     const navigate = useNavigate();
-    const [filter, setFilter] = useState('Weekly');
-
+    const { currentUser } = useAuth();
+    const [filter, setFilter] = useState('All Time');
     const [users, setUsers] = useState([]);
-    const [currentUserData, setCurrentUserData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [myRank, setMyRank] = useState(null);
 
-    // Fetch Leaderboard from Firebase
-    React.useEffect(() => {
-        const fetchLeaderboard = () => {
-            const db = getDatabase(auth.app);
+    // Fetch Leaderboard from PostgreSQL
+    useEffect(() => {
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
+        const token = localStorage.getItem('token');
 
-            // Fetch Top 100
-            const usersRef = query(ref(db, 'users/citizens'), orderByChild('points'), limitToLast(100));
+        const fetchLeaderboard = async () => {
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                if (token) headers['Authorization'] = `Bearer ${token}`;
 
-            onValue(usersRef, (snapshot) => {
-                if (snapshot.exists()) {
-                    const data = snapshot.val();
-                    const leaderboardData = Object.keys(data).map(key => ({
-                        id: key,
-                        ...data[key],
-                        name: (data[key].firstName && data[key].lastName) ? `${data[key].firstName} ${data[key].lastName}` : (data[key].name || 'Anonymous Citizen'),
-                        points: data[key].points || 0,
-                        avatar: data[key].profilePic || `https://ui-avatars.com/api/?name=${data[key].firstName || 'User'}+${data[key].lastName || ''}&background=3b82f6`,
-                        isMe: auth.currentUser?.uid === key
-                    }));
+                const res = await fetch(`${API_BASE_URL}/api/users/leaderboard`, { headers });
 
-                    // Sort descending
-                    leaderboardData.sort((a, b) => b.points - a.points);
+                if (res.ok) {
+                    const data = await res.json();
+                    const leaderboard = data.leaderboard || [];
 
-                    // Assign Rank
-                    const rankedData = leaderboardData.map((u, index) => ({
+                    // Mark current user
+                    const enriched = leaderboard.map(u => ({
                         ...u,
-                        rank: index + 1
+                        isMe: currentUser?.id === u.id
                     }));
+                    setUsers(enriched);
 
-                    setUsers(rankedData);
+                    // Find my rank
+                    const me = enriched.find(u => u.isMe);
+                    if (me) setMyRank(me);
                 }
-            });
-        };
-        fetchLeaderboard();
-    }, []);
-
-    // Fetch My Data Separate (to ensure sticky row always works)
-    React.useEffect(() => {
-        if (!auth.currentUser) return;
-        const db = getDatabase(auth.app);
-        const myRef = ref(db, `users/citizens/${auth.currentUser.uid}`);
-
-        const unsub = onValue(myRef, (snap) => {
-            if (snap.exists()) {
-                const d = snap.val();
-                setCurrentUserData({
-                    id: auth.currentUser.uid,
-                    ...d,
-                    name: (d.firstName && d.lastName) ? `${d.firstName} ${d.lastName}` : (d.name || 'Me'),
-                    points: d.points || 0,
-                    avatar: d.profilePic || `https://ui-avatars.com/api/?name=${d.firstName}+${d.lastName}&background=3b82f6`
-                });
+            } catch (err) {
+                console.error('[Leaderboard] Fetch Error:', err);
+            } finally {
+                setLoading(false);
             }
-        });
-        return () => unsub();
-    }, []);
+        };
+
+        fetchLeaderboard();
+    }, [currentUser?.id]);
+
+    if (loading) {
+        return (
+            <CivicLayout>
+                <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
+                    <Loader2 size={40} className="text-blue-600 animate-spin" />
+                    <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Loading Leaderboard...</p>
+                </div>
+            </CivicLayout>
+        );
+    }
 
     return (
         <CivicLayout>
@@ -81,7 +71,7 @@ const Leaderboard = () => {
                         </div>
                         Leaderboard
                     </h1>
-                    <p className="text-slate-600 dark:text-slate-400 text-base ml-16">Top civic contributors making real impact</p>
+                    <p className="text-slate-600 dark:text-slate-400 text-base ml-16">Top civic contributors making real impact — {users.length} active citizens</p>
                 </div>
 
                 {/* Filter Tabs */}
@@ -103,7 +93,7 @@ const Leaderboard = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Top 3 Podium */}
-                <div className="bg-white dark:bg-slate-800 rounded-lg p-8 border border-slate-200 dark:border-slate-700 flex flex-col justify-end items-center h-[500px]">
+                <div className="bg-white dark:bg-slate-800 rounded-lg p-8 border border-slate-200 dark:border-slate-700 flex flex-col justify-end items-center h-[500px] relative">
                     {/* Champion Header */}
                     <div className="absolute top-8 left-0 right-0 text-center">
                         <div className="flex items-center justify-center gap-2 text-blue-600 dark:text-blue-400 font-semibold uppercase tracking-wider text-sm mb-2">
@@ -192,22 +182,27 @@ const Leaderboard = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200 dark:divide-slate-700 text-slate-700 dark:text-slate-300">
-                                {users.slice(3).map((user) => (
-                                    <tr key={user.rank} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
+                                {users.map((user) => (
+                                    <tr key={user.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group ${user.isMe ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}>
                                         <td className="px-6 py-4">
-                                            <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center font-semibold text-slate-600 dark:text-slate-400 text-sm">
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-semibold text-sm ${user.rank <= 3
+                                                ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                                                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                                                }`}>
                                                 #{user.rank}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
                                                 <img src={user.avatar} className="w-10 h-10 rounded-full border-2 border-slate-200 dark:border-slate-600 object-cover" alt="" />
-                                                <div className="font-semibold text-slate-900 dark:text-white">{user.name}</div>
+                                                <div className="font-semibold text-slate-900 dark:text-white">
+                                                    {user.name} {user.isMe && <span className="text-blue-600 dark:text-blue-400 text-xs ml-1">(You)</span>}
+                                                </div>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
-                                                <Shield size={12} /> Lvl {Math.floor(user.points / 100) + 1}
+                                                <Shield size={12} /> Lvl {user.level}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-right">
@@ -219,33 +214,37 @@ const Leaderboard = () => {
                                 ))}
                             </tbody>
                         </table>
+
+                        {users.length === 0 && (
+                            <div className="py-16 text-center text-slate-400">
+                                <Trophy size={40} className="mx-auto mb-3 opacity-30" />
+                                <p className="font-semibold">No contributors yet</p>
+                                <p className="text-sm mt-1">Be the first to report an issue!</p>
+                            </div>
+                        )}
                     </div>
 
                     {/* Sticky 'Me' Row */}
-                    {(currentUserData || users.find(u => u.isMe)) && (
+                    {myRank && (
                         <div className="bg-blue-50 dark:bg-blue-900/20 p-4 border-t border-blue-200 dark:border-blue-800 flex items-center justify-between sticky bottom-0 z-10">
                             <div className="flex items-center gap-4">
                                 <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center font-bold text-blue-600 dark:text-blue-400">
-                                    #{users.find(u => u.isMe)?.rank || '100+'}
+                                    #{myRank.rank}
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <img
-                                        src={currentUserData?.avatar || users.find(u => u.isMe)?.avatar}
+                                        src={myRank.avatar}
                                         className="w-10 h-10 rounded-full border-2 border-blue-500 object-cover"
                                         alt=""
                                     />
                                     <div className="flex flex-col">
-                                        <span className="font-bold text-slate-900 dark:text-white leading-tight">
-                                            You
-                                        </span>
-                                        <span className="text-xs text-slate-600 dark:text-slate-400 font-semibold">
-                                            {currentUserData?.name || users.find(u => u.isMe)?.name}
-                                        </span>
+                                        <span className="font-bold text-slate-900 dark:text-white leading-tight">You</span>
+                                        <span className="text-xs text-slate-600 dark:text-slate-400 font-semibold">{myRank.name}</span>
                                     </div>
                                 </div>
                             </div>
                             <div className="font-bold text-slate-900 dark:text-white text-lg">
-                                {(currentUserData?.points ?? users.find(u => u.isMe)?.points ?? 0).toLocaleString()} <span className="text-blue-600 dark:text-blue-400 text-sm">pts</span>
+                                {myRank.points.toLocaleString()} <span className="text-blue-600 dark:text-blue-400 text-sm">pts</span>
                             </div>
                         </div>
                     )}

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const ticketController = require('../controllers/ticketController');
+const authenticateToken = require('../middleware/authMiddleware');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -38,6 +39,12 @@ const upload = multer({ storage });
 
 // POST /api/tickets - Create a new civic hazard ticket, uploading media for AI Verification
 router.post('/', optionalAuth, upload.single('file'), ticketController.createTicket);
+
+// PATCH /api/tickets/:id/status - RESTful status update (JWT required)
+router.patch('/:id/status', authenticateToken, ticketController.updateTicketStatus);
+
+// GET /api/tickets/my-reports - Citizen's own tickets (JWT required, uses req.user.id)
+router.get('/my-reports', authenticateToken, ticketController.getMyReports);
 
 // GET /api/tickets/nearby - Fetch hazards within a customizable radius using PostGIS ST_DWithin
 router.get('/nearby', ticketController.getNearbyHazards);
