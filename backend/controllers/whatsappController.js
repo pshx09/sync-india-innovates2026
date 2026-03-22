@@ -603,10 +603,10 @@ exports.receiveWebhook = async (req, res) => {
 
     try {
         const body = req.body;
-        
+
         // Extract citizen phone
         const chatId = body?.senderData?.chatId;
-        
+
         // Ignore message if sender is self (prevent infinite loops)
         if (body?.senderData?.sender === body?.instanceData?.wid || !chatId) {
             return;
@@ -645,7 +645,7 @@ exports.receiveWebhook = async (req, res) => {
                 await query("UPDATE whatsapp_sessions SET current_step = 'NEW', temp_data = '{}', updated_at = CURRENT_TIMESTAMP WHERE phone_number = $1", [chatId]);
             }
             session = { phone_number: chatId, current_step: 'NEW', temp_data: {} };
-            
+
             // If they explicitly typed reset, optionally handle, otherwise flow directly to NEW
             if (commandText === 'reset') {
                 return;
@@ -660,11 +660,11 @@ exports.receiveWebhook = async (req, res) => {
             await sendWhatsAppAudio(chatId, 'welcome_message.mp3');
             await sendWhatsAppMessage(chatId, "Namaste! Nagar Alert Hub mein aapka swagat hai. 🏛️\n\nKripiya samasya ki photo/video/audio aur apni WhatsApp Location ek sath bhejein. 📍📸");
             await query("UPDATE whatsapp_sessions SET current_step = 'AWAITING_ISSUE', updated_at = CURRENT_TIMESTAMP WHERE phone_number = $1", [chatId]);
-        } 
+        }
         else if (step === 'AWAITING_ISSUE') {
             // Task 1: AI Call & Request Location
             const currentImageUrl = req.body.messageData?.fileMessageData?.downloadUrl || imageUrl;
-            
+
             if (!currentImageUrl) {
                 console.error('Image URL not found in payload');
                 await sendWhatsAppMessage(chatId, "⚠️ Please send a clear photo of the incident first. We cannot proceed without an image.");
@@ -683,7 +683,7 @@ exports.receiveWebhook = async (req, res) => {
 
             const tempData = JSON.stringify({ imageUrl: currentImageUrl, caption: text, aiResult });
             await query("UPDATE whatsapp_sessions SET current_step = 'AWAITING_LOCATION', temp_data = $1, updated_at = CURRENT_TIMESTAMP WHERE phone_number = $2", [tempData, chatId]);
-            
+
             await sendWhatsAppAudio(chatId, 'ask_location_hi.mp3');
             await sendWhatsAppMessage(chatId, "Kripiya apni WhatsApp Live/Current Location bhejein taaki hum aage badh sakein. 📍");
         }
@@ -701,7 +701,7 @@ exports.receiveWebhook = async (req, res) => {
                 // Step A: Auto-Register / Lookup User (No ON CONFLICT)
                 let userId;
                 const existingUser = await query('SELECT id FROM users WHERE phone = $1', [phone]);
-                
+
                 if (existingUser.rows.length > 0) {
                     userId = existingUser.rows[0].id;
                 } else {
@@ -714,11 +714,39 @@ exports.receiveWebhook = async (req, res) => {
                 }
 
                 // Step B: Create the Ticket
+                // Step B: Create the Ticket (FIXED VERSION)
                 const ticketRes = await query(`
-                    INSERT INTO tickets (user_id, category, description, image_url, location_lat, location_lng, status) 
-                    VALUES ($1, $2, $3, $4, $5, $6, 'Pending') 
-                    RETURNING id;
-                `, [userId, category, description, storedImageUrl, latitude, longitude]);
+    INSERT INTO tickets (
+        user_phone,
+        issue_type,
+        severity,
+        image_url,
+        description,
+        location,
+        location_lat,
+        location_lng,
+        status
+    ) 
+    VALUES (
+        $1, 
+        $2, 
+        $3, 
+        $4, 
+        $5,
+        ST_SetSRID(ST_MakePoint($6, $7), 4326),
+        $7,
+        $6,
+        'Pending'
+    )
+    RETURNING id;
+`, [
+                    phone,
+                    category || 'General',
+                    aiResult.severity || 'Medium',
+                    storedImageUrl,
+                    description,
+                    longitude,   // ⚠️ important: lng first
+                    latitude]);
                 const ticketId = ticketRes.rows[0].id;
 
                 // Step C: Cleanup & Notify
