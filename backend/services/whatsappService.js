@@ -39,15 +39,21 @@ const sendWhatsAppAudio = async (chatId, fileName) => {
     try {
         const idInstance = process.env.GREEN_API_ID_INSTANCE;
         const apiToken = process.env.GREEN_API_TOKEN;
+
+        // Safely fetch and format the BASE_URL from environment variables
+        if (!process.env.BASE_URL) {
+            console.error("❌ CRITICAL: BASE_URL is missing in Environment Variables!");
+        }
+        
         const baseUrl = (process.env.BASE_URL || 'http://localhost:5001').replace(/\/$/, '');
+        const fileUrl = `${baseUrl}/public/audio/${fileName}`;
+        
+        console.log(`[WhatsApp Service] Sending Dynamic Audio URL: ${fileUrl}`);
 
         if (!idInstance || !apiToken) {
             console.error('[WhatsApp Service] Green API credentials missing in .env');
             return;
         }
-
-        const fileUrl = `${baseUrl}/public/audio/${fileName}`;
-        console.log(`[WhatsApp Service] Attempting to send audio from: ${fileUrl}`);
 
         const url = `https://7107.api.greenapi.com/waInstance${idInstance}/sendFileByUrl/${apiToken}`;
         const payload = {

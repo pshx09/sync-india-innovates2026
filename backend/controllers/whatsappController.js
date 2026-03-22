@@ -698,14 +698,20 @@ exports.receiveWebhook = async (req, res) => {
                 const category = aiResult.category || 'General';
                 const description = aiResult.description || 'Civic Issue Reported via WhatsApp';
 
-                // Step A: Auto-Register / Lookup User
-                const userRes = await query(`
-                    INSERT INTO users (name, phone, role) 
-                    VALUES ($1, $2, 'citizen') 
-                    ON CONFLICT (phone) DO UPDATE SET name = EXCLUDED.name 
-                    RETURNING id;
-                `, [senderName, phone]);
-                const userId = userRes.rows[0].id;
+                // Step A: Auto-Register / Lookup User (No ON CONFLICT)
+                let userId;
+                const existingUser = await query('SELECT id FROM users WHERE phone = $1', [phone]);
+                
+                if (existingUser.rows.length > 0) {
+                    userId = existingUser.rows[0].id;
+                } else {
+                    const insertRes = await query(`
+                        INSERT INTO users (name, phone, role) 
+                        VALUES ($1, $2, 'citizen') 
+                        RETURNING id;
+                    `, [senderName, phone]);
+                    userId = insertRes.rows[0].id;
+                }
 
                 // Step B: Create the Ticket
                 const ticketRes = await query(`
