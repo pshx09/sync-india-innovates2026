@@ -15,7 +15,7 @@ const sendWhatsAppMessage = async (chatId, text) => {
             return;
         }
 
-        const url = `https://7103.api.greenapi.com/waInstance${idInstance}/sendMessage/${apiToken}`;
+        const url = `https://7107.api.greenapi.com/waInstance${idInstance}/sendMessage/${apiToken}`;
         const payload = {
             chatId: chatId,
             message: text
