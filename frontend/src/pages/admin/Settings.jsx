@@ -48,9 +48,9 @@ const Settings = () => {
                             Direct Command • {currentUser?.department || 'General'}
                         </div>
                         <h1 className="text-4xl font-black text-slate-900 dark:text-white uppercase leading-tight mb-1">
-                            {currentUser?.firstName} {currentUser?.lastName}
+                            {currentUser?.firstName || 'Admin'} {currentUser?.lastName || ''}
                         </h1>
-                        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Authorized Official ID: R-0923-{currentUser?.uid?.slice(-4)}</p>
+                        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Authorized Official ID: R-0923-{currentUser?.id?.toString().slice(-4) || '0000'}</p>
                     </div>
 
                     <button className="px-6 py-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-3xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl hover:scale-105 transition-transform flex items-center gap-2">

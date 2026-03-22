@@ -223,7 +223,7 @@ const IncidentDetail = () => {
                                     <div className="p-2 bg-white/20 backdrop-blur-md rounded-xl">
                                         <Sparkles size={20} />
                                     </div>
-                                    <h3 className="font-black uppercase tracking-widest text-sm">Gemini Neural Insight</h3>
+                                    <h3 className="font-black uppercase tracking-widest text-sm">Nagar AI Engine Insight</h3>
                                 </div>
                                 <div className="space-y-4">
                                     <div>

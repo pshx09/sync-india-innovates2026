@@ -147,7 +147,7 @@ const ReportDetail = () => {
                                 <div className="w-8 h-8 bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg flex items-center justify-center">
                                     <span className="text-lg">✨</span>
                                 </div>
-                                <h3 className="font-bold text-blue-900 dark:text-blue-100">Gemini AI Analysis</h3>
+                                <h3 className="font-bold text-blue-900 dark:text-blue-100">Nagar AI Engine</h3>
                             </div>
                             <p className="text-slate-700 dark:text-slate-300 leading-relaxed text-sm mb-4">
                                 {report.aiAnalysis || "No AI analysis available for this report."}

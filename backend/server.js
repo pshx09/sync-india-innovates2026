@@ -41,7 +41,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/auth', authRoutes);
 app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/upload', require('./routes/uploadRoutes'));
-// app.use('/api/whatsapp', require('./routes/whatsappRoutes'));
+app.use('/api/whatsapp', require('./routes/whatsappRoutes'));
 // app.use('/api/alerts', require('./routes/alertRoutes'));
 app.use('/api/routes', require('./routes/routeRoutes'));
 app.use('/api/tickets', require('./routes/ticketRoutes'));

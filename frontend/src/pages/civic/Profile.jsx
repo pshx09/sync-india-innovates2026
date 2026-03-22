@@ -426,8 +426,8 @@ const Profile = () => {
 
                             {!isEditing && (
                                 <>
-                                    <InfoCard icon={<Mail className="text-blue-500" />} label="Email Address" value={userData.email} verified={!!userData.email} />
-                                    <InfoCard icon={<Phone className="text-green-500" />} label="Phone Number" value={`+91 ${userData.mobile}`} verified={userData.mobile && userData.mobile !== 'N/A'} />
+                                    <InfoCard icon={<Mail className="text-blue-500" />} label="Email Address" value={userData.email || 'No email provided'} verified={!!userData.email} />
+                                    <InfoCard icon={<Phone className="text-green-500" />} label="Phone Number" value={userData.mobile ? `+91 ${userData.mobile}` : 'No phone number'} verified={userData.mobile && userData.mobile !== 'N/A'} />
                                 </>
                             )}
 

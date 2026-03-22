@@ -594,4 +594,49 @@ exports.broadcastTargetedAlert = async (targetLocation, message, simulatedReceiv
     }
 };
 
+const { sendWhatsAppMessage } = require('../services/whatsappService');
+
+exports.receiveWebhook = async (req, res) => {
+    // 1. IMMEDIATE ACKNOWLEDGMENT (Prevent retry loops)
+    res.status(200).send('OK');
+
+    try {
+        const body = req.body;
+        
+        // Extract citizen phone
+        const chatId = body?.senderData?.chatId;
+        
+        // Ignore message if sender is self (prevent infinite loops)
+        if (body?.senderData?.sender === body?.instanceData?.wid || !chatId) {
+            return;
+        }
+
+        const typeMessage = body?.messageData?.typeMessage;
+        let text = '';
+        let imageUrl = null;
+
+        if (typeMessage === 'imageMessage') {
+            imageUrl = body?.messageData?.fileMessageData?.downloadUrl;
+            text = body?.messageData?.fileMessageData?.caption || '';
+        } else if (typeMessage === 'textMessage') {
+            text = body?.messageData?.textMessageData?.textMessage || '';
+        } else if (typeMessage === 'extendedTextMessage') {
+            text = body?.messageData?.extendedTextMessageData?.text || '';
+        }
+
+        console.log(`[Green API Webhook] Received payload:`, { chatId, text, imageUrl });
+
+        // Simple placeholder response
+        if (chatId) {
+            await sendWhatsAppMessage(
+                chatId, 
+                "Welcome to Nagar Alert Hub! We have received your message. Our AI is analyzing it."
+            );
+        }
+
+    } catch (err) {
+        console.error("[Green API] Error processing webhook:", err);
+    }
+};
+
 module.exports = exports;

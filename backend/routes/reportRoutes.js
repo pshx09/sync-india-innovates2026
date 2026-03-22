@@ -13,7 +13,8 @@ const {
     updateReportStatus,
     sendBroadcast,
     getNearbyReports,
-    detectLocationFromText
+    detectLocationFromText,
+    getAdminStats
 } = require('../controllers/reportController');
 const authenticateToken = require('../middleware/authMiddleware');
 
@@ -45,6 +46,9 @@ router.post('/broadcast', optionalAuth, sendBroadcast);
 // Citizen authenticated routes
 router.get('/dashboard-stats', authenticateToken, getDashboardStats);
 router.get('/my-reports', authenticateToken, getUserReports);
+
+// Admin authenticated route
+router.get('/admin/stats', authenticateToken, getAdminStats);
 
 // Legacy/Admin routes
 router.get('/user/:uid', getUserReports);

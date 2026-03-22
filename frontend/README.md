@@ -6,7 +6,7 @@
 
 ## 🚀 Key Features
 
-*   **🤖 AI Forensic Analysis**: automatically analyzes uploaded images using **Google Vertex AI (Gemini 1.5 Flash)** to detect:
+*   **🤖 AI Forensic Analysis**: automatically analyzes uploaded images using **Nagar AI Engine** to detect:
     *   Deepfakes or AI-generated images.
     *   Screenshots or non-civic content.
     *   Severity of the issue (High/Medium/Low).
@@ -28,7 +28,7 @@
 
 ### **Backend**
 *   **Runtime**: Node.js & Express.js
-*   **AI Engine**: Google Cloud Vertex AI (Gemini 1.5 Flash)
+*   **AI Engine**: Nagar AI Engine
 *   **Database**: Firebase Realtime Database
 *   **WhatsApp API**: Whapi.cloud (Gateway)
 *   **Notifications**: Twilio (SMS), Nodemailer (Email)
@@ -40,7 +40,7 @@
 ### Prerequisites
 *   Node.js (v18+)
 *   Firebase Project (Realtime DB enabled)
-*   Google Cloud Project (Vertex AI API enabled)
+*   Nagar AI Server (FastAPI + Ollama)
 *   Whapi.cloud Account (for WhatsApp)
 
 ### 1. Clone the Repository
@@ -119,7 +119,7 @@ npm run dev
 SYNC_Nagar_Alert_Hub/
 ├── backend/            # Express Server & API Routes
 │   ├── controllers/    # Logic for WhatsApp, Reports, Auth
-│   ├── services/       # AI Service (Gemini), Firebase Service
+│   ├── services/       # AI Service, Firebase Service
 │   └── routes/         # API Endpoints
 ├── frontend/           # React Client
 │   ├── src/

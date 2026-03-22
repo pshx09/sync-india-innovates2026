@@ -458,6 +458,58 @@ exports.getDashboardStats = async (req, res) => {
     }
 };
 
+exports.getAdminStats = async (req, res) => {
+    try {
+        const adminDept = req.user?.department;
+        
+        let statsQuery, recentQuery, values = [];
+        if (adminDept && adminDept !== 'General' && adminDept !== 'All') {
+            statsQuery = `
+                SELECT 
+                    COUNT(*) as total,
+                    COUNT(*) FILTER (WHERE status = 'Pending' OR status = 'Open') as pending,
+                    COUNT(*) FILTER (WHERE status = 'Resolved' OR status = 'Accepted') as resolved,
+                    COUNT(*) FILTER (WHERE status = 'In Progress') as in_progress
+                FROM tickets WHERE department = $1;
+            `;
+            recentQuery = `SELECT id, issue_type, description, status, created_at FROM tickets WHERE department = $1 ORDER BY created_at DESC LIMIT 5;`;
+            values = [adminDept];
+        } else {
+             statsQuery = `
+                SELECT 
+                    COUNT(*) as total,
+                    COUNT(*) FILTER (WHERE status = 'Pending' OR status = 'Open') as pending,
+                    COUNT(*) FILTER (WHERE status = 'Resolved' OR status = 'Accepted') as resolved,
+                    COUNT(*) FILTER (WHERE status = 'In Progress') as in_progress
+                FROM tickets;
+            `;
+            recentQuery = `SELECT id, issue_type, description, status, created_at FROM tickets ORDER BY created_at DESC LIMIT 5;`;
+        }
+
+        const statsResult = await pgDb.query(statsQuery, values);
+        const recentResult = await pgDb.query(recentQuery, values);
+        
+        res.status(200).json({
+            stats: {
+                total: parseInt(statsResult.rows[0]?.total || 0),
+                pending: parseInt(statsResult.rows[0]?.pending || 0),
+                resolved: parseInt(statsResult.rows[0]?.resolved || 0),
+                inProgress: parseInt(statsResult.rows[0]?.in_progress || 0)
+            },
+            recentLogs: recentResult.rows.map(row => ({
+                id: row.id,
+                title: `${row.status || 'Active'} Report`,
+                time: new Date(row.created_at).toLocaleString(),
+                desc: `${row.issue_type} - ${row.description ? row.description.substring(0, 50) : 'No description...'}`,
+                status: row.status
+            }))
+        });
+    } catch (error) {
+        console.error("Admin Stats Error:", error);
+        res.status(500).json({ error: "Failed to fetch admin stats" });
+    }
+};
+
 exports.getUserReports = async (req, res) => {
     try {
         // Strictly use req.user.id from authMiddleware

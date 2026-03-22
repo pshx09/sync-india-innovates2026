@@ -1,10 +1,41 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import AdminLayout from './AdminLayout';
 import { useAuth } from '../../context/AuthContext';
-import { Mail, Phone, MapPin, Award, Clock, CheckCircle, Shield, Calendar, Activity } from 'lucide-react';
+import { Mail, Phone, MapPin, Award, Clock, CheckCircle, Shield, Calendar, Activity, Loader2 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 const OfficerProfile = () => {
     const { currentUser } = useAuth();
+    const [stats, setStats] = useState(null);
+    const [logs, setLogs] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchStats = async () => {
+            try {
+                const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
+                const token = localStorage.getItem('token');
+                if (!token) { setLoading(false); return; }
+
+                const res = await fetch(`${API_BASE_URL}/api/reports/admin/stats`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (res.ok) {
+                    const data = await res.json();
+                    setStats(data.stats);
+                    setLogs(data.recentLogs || []);
+                } else {
+                    toast.error("Failed to load official statistics");
+                }
+            } catch (err) {
+                console.error("Profile stats fetch error:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchStats();
+    }, []);
 
     return (
         <AdminLayout>
@@ -25,7 +56,7 @@ const OfficerProfile = () => {
                                 </span>
                             </div>
                             <h1 className="text-4xl lg:text-5xl font-black text-slate-900 dark:text-white uppercase leading-none">
-                                {currentUser?.firstName} {currentUser?.lastName}
+                                {currentUser?.firstName || 'Command'} {currentUser?.lastName || 'Official'}
                             </h1>
                             <p className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                                 <Shield size={14} className="text-blue-500" />
@@ -33,9 +64,9 @@ const OfficerProfile = () => {
                             </p>
                         </div>
                         <div className="flex flex-col gap-3 w-full md:w-auto">
-                            <InfoBadge icon={<Mail size={16} />} label={currentUser?.email} />
-                            <InfoBadge icon={<Phone size={16} />} label={currentUser?.phoneNumber || "No Contact Num"} />
-                            <InfoBadge icon={<MapPin size={16} />} label="Ranchi Central HQ, Zone 1" />
+                            <InfoBadge icon={<Mail size={16} />} label={currentUser?.email || 'N/A'} />
+                            <InfoBadge icon={<Phone size={16} />} label={currentUser?.phoneNumber || currentUser?.phone || "No Contact Num"} />
+                            <InfoBadge icon={<MapPin size={16} />} label={currentUser?.address || "Location Unavailable"} />
                         </div>
                     </div>
                 </div>
@@ -43,66 +74,62 @@ const OfficerProfile = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Left Col - Stats */}
                     <div className="space-y-6">
-                        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 border border-slate-200 dark:border-slate-800 shadow-sm">
+                        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 border border-slate-200 dark:border-slate-800 shadow-sm min-h-[300px] flex flex-col">
                             <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-widest mb-6 flex items-center gap-2">
                                 <Activity size={20} className="text-indigo-500" /> Performance
                             </h3>
-                            <div className="grid grid-cols-1 gap-4">
-                                <StatRow label="Incidents Resolved" value="1,284" icon={<CheckCircle size={18} />} color="text-green-500" />
-                                <StatRow label="Response Time" value="12m 30s" icon={<Clock size={18} />} color="text-blue-500" />
-                                <StatRow label="Citizen Rating" value="4.9/5.0" icon={<Award size={18} />} color="text-yellow-500" />
-                                <StatRow label="Time on Duty" value="142 Hrs" icon={<Calendar size={18} />} color="text-purple-500" />
-                            </div>
+                            {loading ? (
+                                <div className="flex flex-1 items-center justify-center text-blue-600"><Loader2 className="animate-spin" size={32} /></div>
+                            ) : (
+                                <div className="grid grid-cols-1 gap-4">
+                                    <StatRow label="Incidents Resolved" value={stats?.resolved || 0} icon={<CheckCircle size={18} />} color="text-green-500" />
+                                    <StatRow label="Total Inbound" value={stats?.total || 0} icon={<Clock size={18} />} color="text-blue-500" />
+                                    <StatRow label="Pending" value={stats?.pending || 0} icon={<Activity size={18} />} color="text-orange-500" />
+                                    <StatRow label="In Progress" value={stats?.inProgress || 0} icon={<Shield size={18} />} color="text-purple-500" />
+                                </div>
+                            )}
                         </div>
 
-                        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2.5rem] p-8 text-white shadow-xl shadow-blue-600/20 relative overflow-hidden">
-                            <div className="relative z-10">
-                                <Award size={48} className="mb-4 text-yellow-300" />
-                                <h3 className="text-2xl font-black uppercase mb-1">Officer of the Month</h3>
-                                <p className="text-blue-100 text-sm font-medium mb-6">Awarded for exceptional service during the sanitation drive in Sector 4.</p>
-                                <div className="text-[10px] font-black uppercase tracking-widest bg-white/20 px-3 py-1 rounded-lg inline-block">November 2025</div>
+                        {!loading && stats?.resolved > 50 && (
+                            <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2.5rem] p-8 text-white shadow-xl shadow-blue-600/20 relative overflow-hidden">
+                                <div className="relative z-10">
+                                    <Award size={48} className="mb-4 text-yellow-300" />
+                                    <h3 className="text-2xl font-black uppercase mb-1">Top Responder</h3>
+                                    <p className="text-blue-100 text-sm font-medium mb-6">Recognized for exceptionally rapid ticket resolution rates.</p>
+                                    <div className="text-[10px] font-black uppercase tracking-widest bg-white/20 px-3 py-1 rounded-lg inline-block">Active Milestone</div>
+                                </div>
+                                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
                             </div>
-                            <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-                        </div>
+                        )}
                     </div>
 
                     {/* Right Col - Activity Log */}
                     <div className="lg:col-span-2">
-                        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 border border-slate-200 dark:border-slate-800 shadow-sm h-full">
+                        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 border border-slate-200 dark:border-slate-800 shadow-sm h-full flex flex-col">
                             <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-widest mb-8 flex items-center gap-2">
                                 <Clock size={20} className="text-slate-400" /> Service Log
                             </h3>
 
-                            <div className="space-y-8 relative before:absolute before:left-4 before:top-4 before:bottom-4 before:w-[2px] before:bg-slate-100 dark:before:bg-slate-800">
-                                <LogItem
-                                    title="Report Verified #RP-10293"
-                                    time="10:42 AM Today"
-                                    desc="Verified pothole complaint at Main Road. Dispatched maintenance crew."
-                                    icon={<CheckCircle size={14} className="text-white" />}
-                                    color="bg-green-500"
-                                />
-                                <LogItem
-                                    title="Broadcast Alert Sent"
-                                    time="09:15 AM Today"
-                                    desc="Issued heavy rain warning for Zone 2 residents via WhatsApp channel."
-                                    icon={<Activity size={14} className="text-white" />}
-                                    color="bg-blue-500"
-                                />
-                                <LogItem
-                                    title="Shift Started"
-                                    time="09:00 AM Today"
-                                    desc="Logged in to Command Center from HQ Terminal 04."
-                                    icon={<Shield size={14} className="text-white" />}
-                                    color="bg-slate-500"
-                                />
-                                <LogItem
-                                    title="System Maintenance"
-                                    time="Yesterday"
-                                    desc="Updated department notification protocols."
-                                    icon={<Award size={14} className="text-white" />}
-                                    color="bg-purple-500"
-                                />
-                            </div>
+                            {loading ? (
+                                <div className="flex flex-1 items-center justify-center text-slate-400"><Loader2 className="animate-spin" size={32} /></div>
+                            ) : logs.length === 0 ? (
+                                <div className="flex flex-1 items-center justify-center text-slate-400 font-bold uppercase text-sm tracking-widest">
+                                    No Recent Logs Found
+                                </div>
+                            ) : (
+                                <div className="space-y-8 relative before:absolute before:left-4 before:top-4 before:bottom-4 before:w-[2px] before:bg-slate-100 dark:before:bg-slate-800">
+                                    {logs.map((log, index) => (
+                                        <LogItem
+                                            key={log.id || index}
+                                            title={log.title}
+                                            time={log.time}
+                                            desc={log.desc}
+                                            icon={<CheckCircle size={14} className="text-white" />}
+                                            color={log.status === 'Resolved' ? 'bg-green-500' : log.status === 'Pending' ? 'bg-orange-500' : 'bg-blue-500'}
+                                        />
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -135,10 +162,10 @@ const LogItem = ({ title, time, desc, icon, color }) => (
         </div>
         <div>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1">
-                <h4 className="font-bold text-slate-900 dark:text-white">{title}</h4>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded self-start">{time}</span>
+                <h4 className="font-bold text-slate-900 dark:text-white truncate pr-4">{title}</h4>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded self-start whitespace-nowrap">{time}</span>
             </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-medium">{desc}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-medium line-clamp-2">{desc}</p>
         </div>
     </div>
 );

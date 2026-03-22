@@ -409,7 +409,7 @@ const ReportIssue = () => {
                                                     <div className="flex items-center gap-4">
                                                         <Loader2 size={32} className="animate-spin text-blue-600 dark:text-blue-400" />
                                                         <div>
-                                                            <div className="font-bold text-slate-900 dark:text-white">Gemini AI Analysis</div>
+                                                            <div className="font-bold text-slate-900 dark:text-white">Nagar AI Engine</div>
                                                             <div className="text-sm text-slate-600 dark:text-slate-400 mt-1">Performing comprehensive image analysis...</div>
                                                         </div>
                                                     </div>
@@ -601,7 +601,7 @@ const ReportIssue = () => {
                                                     <div className="flex items-center gap-4">
                                                         <Loader2 size={32} className="animate-spin text-blue-600 dark:text-blue-400" />
                                                         <div>
-                                                            <div className="font-bold text-slate-900 dark:text-white">Gemini AI Analysis</div>
+                                                            <div className="font-bold text-slate-900 dark:text-white">Nagar AI Engine</div>
                                                             <div className="text-sm text-slate-600 dark:text-slate-400 mt-1">Analyzing video content...</div>
                                                         </div>
                                                     </div>
@@ -666,7 +666,7 @@ const ReportIssue = () => {
                                                     <div className="flex items-center gap-4">
                                                         <Loader2 size={32} className="animate-spin text-blue-600 dark:text-blue-400" />
                                                         <div>
-                                                            <div className="font-bold text-slate-900 dark:text-white">Gemini AI Analysis</div>
+                                                            <div className="font-bold text-slate-900 dark:text-white">Nagar AI Engine</div>
                                                             <div className="text-sm text-slate-600 dark:text-slate-400 mt-1">Transcribing and analyzing audio...</div>
                                                         </div>
                                                     </div>
