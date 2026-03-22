@@ -594,7 +594,8 @@ exports.broadcastTargetedAlert = async (targetLocation, message, simulatedReceiv
     }
 };
 
-const { sendWhatsAppMessage } = require('../services/whatsappService');
+const { sendWhatsAppMessage, sendWhatsAppAudio } = require('../services/whatsappService');
+const { query } = require('../config/db');
 
 exports.receiveWebhook = async (req, res) => {
     // 1. IMMEDIATE ACKNOWLEDGMENT (Prevent retry loops)
@@ -614,6 +615,8 @@ exports.receiveWebhook = async (req, res) => {
         const typeMessage = body?.messageData?.typeMessage;
         let text = '';
         let imageUrl = null;
+        let latitude = null;
+        let longitude = null;
 
         if (typeMessage === 'imageMessage') {
             imageUrl = body?.messageData?.fileMessageData?.downloadUrl;
@@ -622,20 +625,100 @@ exports.receiveWebhook = async (req, res) => {
             text = body?.messageData?.textMessageData?.textMessage || '';
         } else if (typeMessage === 'extendedTextMessage') {
             text = body?.messageData?.extendedTextMessageData?.text || '';
+        } else if (typeMessage === 'locationMessage') {
+            latitude = body?.messageData?.locationMessageData?.latitude;
+            longitude = body?.messageData?.locationMessageData?.longitude;
         }
 
-        console.log(`[Green API Webhook] Received payload:`, { chatId, text, imageUrl });
+        console.log(`[Green API Webhook] Received payload:`, { chatId, text, typeMessage });
 
-        // Simple placeholder response
-        if (chatId) {
-            await sendWhatsAppMessage(
-                chatId, 
-                "Welcome to Nagar Alert Hub! We have received your message. Our AI is analyzing it."
-            );
+        // 2. Fetch Session from Database
+        let sessionRes = await query('SELECT * FROM whatsapp_sessions WHERE phone_number = $1', [chatId]);
+        let session = sessionRes.rows[0];
+
+        // Ensure session exists or handle reset words
+        const commandText = text.toLowerCase().trim();
+        if (!session || commandText === 'reset' || commandText === 'hi' || commandText === 'hello' || commandText === 'start') {
+            if (!session) {
+                await query("INSERT INTO whatsapp_sessions (phone_number, current_step) VALUES ($1, 'NEW')", [chatId]);
+            } else {
+                await query("UPDATE whatsapp_sessions SET current_step = 'NEW', temp_data = '{}', updated_at = CURRENT_TIMESTAMP WHERE phone_number = $1", [chatId]);
+            }
+            session = { phone_number: chatId, current_step: 'NEW', temp_data: {} };
+            
+            // If they explicitly typed reset, optionally handle, otherwise flow directly to NEW
+            if (commandText === 'reset') {
+                return;
+            }
+        }
+
+        const step = session.current_step;
+
+        // 3. State Machine Routing
+        if (step === 'NEW') {
+            // Step 1: Play welcome message & request photo
+            await sendWhatsAppAudio(chatId, 'welcome_message.mp3');
+            await query("UPDATE whatsapp_sessions SET current_step = 'AWAITING_ISSUE', updated_at = CURRENT_TIMESTAMP WHERE phone_number = $1", [chatId]);
+        } 
+        else if (step === 'AWAITING_ISSUE') {
+            // Task 1: AI Call & Request Location
+            if (imageUrl) {
+                let aiResult = null;
+                try {
+                    const aiUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+                    const aiResponse = await require('axios').post(`${aiUrl}/analyze`, { image_url: imageUrl });
+                    aiResult = aiResponse.data;
+                } catch (aiErr) {
+                    console.error("[Green API] AI Service Error:", aiErr.message);
+                    aiResult = { category: "Uncategorized (AI Error)", severity: "Moderate", description: text || "Image submitted without AI description" };
+                }
+
+                const tempData = JSON.stringify({ imageUrl, caption: text, aiResult });
+                await query("UPDATE whatsapp_sessions SET current_step = 'AWAITING_LOCATION', temp_data = $1, updated_at = CURRENT_TIMESTAMP WHERE phone_number = $2", [tempData, chatId]);
+                await sendWhatsAppAudio(chatId, 'ask_location_hi.mp3');
+            } else {
+                await sendWhatsAppMessage(chatId, "⚠️ Please send a clear photo of the incident first. We cannot proceed without an image.");
+            }
+        }
+        else if (step === 'AWAITING_LOCATION') {
+            // Task 2: Validate location & Auto-Register & Ticket Creation
+            if (latitude && longitude) {
+                const phone = chatId.split('@')[0];
+                const senderName = body?.senderData?.senderName || 'Citizen';
+                const tempData = typeof session.temp_data === 'string' ? JSON.parse(session.temp_data) : (session.temp_data || {});
+                const storedImageUrl = tempData.imageUrl || '';
+                const aiResult = tempData.aiResult || {};
+                const category = aiResult.category || 'General';
+                const description = aiResult.description || 'Civic Issue Reported via WhatsApp';
+
+                // Step A: Auto-Register / Lookup User
+                const userRes = await query(`
+                    INSERT INTO users (name, phone, role) 
+                    VALUES ($1, $2, 'citizen') 
+                    ON CONFLICT (phone) DO UPDATE SET name = EXCLUDED.name 
+                    RETURNING id;
+                `, [senderName, phone]);
+                const userId = userRes.rows[0].id;
+
+                // Step B: Create the Ticket
+                const ticketRes = await query(`
+                    INSERT INTO tickets (user_id, category, description, image_url, location_lat, location_lng, status) 
+                    VALUES ($1, $2, $3, $4, $5, $6, 'Pending') 
+                    RETURNING id;
+                `, [userId, category, description, storedImageUrl, latitude, longitude]);
+                const ticketId = ticketRes.rows[0].id;
+
+                // Step C: Cleanup & Notify
+                await query("DELETE FROM whatsapp_sessions WHERE phone_number = $1", [chatId]);
+                await sendWhatsAppAudio(chatId, 'report_accepted.mp3');
+                await sendWhatsAppMessage(chatId, `✅ Aapki shikayat darj ho gayi hai. Ticket ID: #${ticketId}. Our team is on it!`);
+            } else {
+                await sendWhatsAppMessage(chatId, "📍 Please use WhatsApp's *Location Attachment* feature to pin the exact location.");
+            }
         }
 
     } catch (err) {
-        console.error("[Green API] Error processing webhook:", err);
+        console.error("[Green API] Error processing webhook state machine:", err);
     }
 };
 
