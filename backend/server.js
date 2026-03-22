@@ -5,6 +5,7 @@ const bodyParser = require('body-parser');
 const axios = require('axios');
 const authRoutes = require('./routes/authRoutes');
 const { db } = require('./config/firebase');
+const path = require('path');
 
 // Note: WhatsApp Controller logic is now handled in 'routes/whatsappRoutes.js'
 // and AI Logic is handled in 'services/aiService.js'
@@ -12,7 +13,6 @@ const { db } = require('./config/firebase');
 const app = express();
 const PORT = process.env.PORT || 5001;
 const WHAPI_TOKEN = process.env.WHAPI_TOKEN;
-const path = require('path');
 
 // Firebase and Google Cloud initialization logic has been cleaned up for PostgreSQL/Local AI
 
@@ -24,6 +24,9 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
+
+// The Magic Fix for Render (Absolute Paths)
+app.use('/public', express.static(path.join(__dirname, 'public')));
 
 // 1. Universal Logger
 app.use((req, res, next) => {
