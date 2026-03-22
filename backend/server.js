@@ -14,19 +14,7 @@ const PORT = process.env.PORT || 5001;
 const WHAPI_TOKEN = process.env.WHAPI_TOKEN;
 const path = require('path');
 
-// --- 0. FIX GOOGLE CREDENTIALS PATH ---
-if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-    if (!path.isAbsolute(credPath)) {
-        const absolutePath = path.resolve(__dirname, credPath);
-        process.env.GOOGLE_APPLICATION_CREDENTIALS = absolutePath;
-        console.log(`[CONFIG] Resolved Google Credentials to: ${absolutePath}`);
-    } else {
-        console.log(`[CONFIG] Google Credentials set to: ${credPath}`);
-    }
-} else {
-    console.error("❌ [CONFIG] GOOGLE_APPLICATION_CREDENTIALS is missing in .env");
-}
+// Firebase and Google Cloud initialization logic has been cleaned up for PostgreSQL/Local AI
 
 // Middleware
 app.use(cors({
@@ -99,9 +87,7 @@ app.use((err, req, res, next) => {
 
 // Start Server
 const server = app.listen(PORT, '0.0.0.0', async () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    // Check for Vertex AI configuration by validating common env vars
-    if (process.env.GCP_PROJECT_ID) console.log("✅ Vertex AI Configuration Detected.");
+    console.log(`🚀 Server running on port ${PORT} with Local AI routing enabled.`);
 });
 
 // Keep-Alive & Error Handling to prevent silent exits

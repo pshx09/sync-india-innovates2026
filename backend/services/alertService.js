@@ -1,21 +1,6 @@
-const { VertexAI } = require('@google-cloud/vertexai');
+const axios = require('axios');
 require('dotenv').config();
 
-const vertex_ai = new VertexAI({
-    project: process.env.GCP_PROJECT_ID,
-    location: 'us-central1'
-});
-
-const modelName = 'gemini-2.0-flash-001';
-
-const generativeModel = vertex_ai.getGenerativeModel({
-    model: modelName,
-    generationConfig: {
-        maxOutputTokens: 256,
-        temperature: 0.7,
-        responseMimeType: 'application/json',
-    },
-});
 
 /**
  * Generate a concise civic alert from report data
@@ -61,16 +46,20 @@ RETURN JSON:
 }
 `;
 
-        const request = {
-            contents: [{
-                role: 'user',
-                parts: [{ text: prompt }]
-            }]
-        };
+        const ollamaUrl = process.env.OLLAMA_SERVICE_URL;
+        if (!ollamaUrl) {
+            console.warn("[WARNING] OLLAMA_SERVICE_URL is missing.");
+            throw new Error("OLLAMA_SERVICE_URL missing for alert generation");
+        }
 
-        const result = await generativeModel.generateContent(request);
-        const response = result.response;
-        const text = response.candidates[0].content.parts[0].text;
+        const result = await axios.post(`${ollamaUrl}/api/generate`, {
+            model: "llama3.2:1b",
+            prompt: prompt,
+            format: "json",
+            stream: false
+        }, { timeout: 15000 });
+
+        const text = result.data.response;
 
         // Parse JSON
         let jsonStr = text;

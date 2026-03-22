@@ -1,31 +1,12 @@
-const { VertexAI } = require('@google-cloud/vertexai');
 const pgDb = require('../config/db');
 // Firebase import kept only for legacy createReport — will be removed in future
 let db;
-try { db = require('../config/firebase').db; } catch(e) { console.warn('[reportController] Firebase not available, using PostgreSQL only'); }
+try { db = require('../config/firebase').db; } catch (e) { console.warn('[reportController] Firebase not available, using PostgreSQL only'); }
 const { point } = require('@turf/helpers');
 const turfDistance = require('@turf/distance');
 const distance = turfDistance.default || turfDistance;
-
-// Initialize Vertex AI
-const vertex_ai = new VertexAI({
-    project: process.env.GCP_PROJECT_ID,
-    location: 'us-central1'
-});
-
-
-// --- FASTEST AVAILABLE MODEL ---
-// Using Gemini 2.0 Flash (Version 001) for maximum speed
-const modelName = 'gemini-2.0-flash-001';
-console.log(`🚀 Speed Mode: Vertex AI Controller using '${modelName}'`);
-
-const generativeModel = vertex_ai.getGenerativeModel({
-    model: modelName,
-    generationConfig: {
-        maxOutputTokens: 2048,
-        temperature: 0.0,
-    },
-});
+const axios = require('axios');
+const FormData = require('form-data');
 
 const sanitizeKey = (key) => {
     if (!key) return "General";
@@ -77,73 +58,62 @@ exports.verifyReportImage = async (req, res) => {
         return res.status(400).json({ error: "No image/media provided" });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-        // Warning only, as we use Vertex AI service account primarily
-        console.warn("[AI WARNING] GEMINI_API_KEY missing - relying on Vertex AI credentials");
-    }
-
     try {
         console.log("[AI] Analyzing media for type:", type);
 
-        const prompt = `
-  You are a filtering algorithm designed to REJECT Stock Photos and Staged Images.
-  Do not act as a "helper". Your job is to BLOCK fake reports.
-
-  Analyze the visual style of this media (image/video).
-
-  CRITICAL FAIL CONDITIONS (If any are true, verified = false):
-  1. **Cinematic Lighting:** Is there dramatic blue/orange lighting, backlighting, or perfect studio lighting? (Real civic photos are flat/dull).
-  2. **Staged Action:** Does it look like a movie scene? (e.g. A burglar in a mask "sneaking", a model posing)?
-  3. **High Production Value:** Is the image/video sharp, perfectly framed, with artistic bokeh (blur)? (Real citizen photos are often blurry, messy, and poorly framed).
-  4. **Digital Marks:** Watermarks, text overlays, UI bars (screenshots).
-
-  If it looks like a Stock Photo or Movie Scene, you MUST REJECT it. 
-  "Stock photo of a burglar" is NOT a valid report. It is a FAKE.
-
-  Only accept the media if it looks like a **boring, amateur, low-quality** recording by a citizen.
-
-  If valid (Real):
-  Identify the department: Police, Traffic, Fire & Safety, Municipal/Waste, Public Works.
-
-  RETURN JSON ONLY:
-  {
-    "verified": boolean,
-    "department": "Name" or null,
-    "detected_issue": "Short Title",
-    "explanation": "REJECTED: [Reason] OR ACCEPTED: [Description]",
-    "severity": "Low" | "Medium" | "High" | "Critical",
-    "ai_confidence": number
-  }
-`;
-
         // Detect mime type
         const mimeType = imageBase64.match(/^data:([^;]+);base64,/)?.[1] || "image/jpeg";
-        // FIX: Correctly strip metadata for ANY mime type (video, audio, etc)
         const base64Data = imageBase64.replace(/^data:[^;]+;base64,/, "");
+        const buffer = Buffer.from(base64Data, "base64");
 
-        const request = {
-            contents: [{
-                role: 'user',
-                parts: [
-                    { text: prompt },
-                    { inlineData: { mimeType: mimeType, data: base64Data } }
-                ]
-            }]
-        };
+        const formData = new FormData();
+        formData.append("file", buffer, { filename: "upload.media", contentType: mimeType });
+        formData.append("description", "none");
+        formData.append("location_data", "none");
 
-        const result = await generativeModel.generateContent(request);
-        const response = await result.response;
-        const text = response.candidates[0].content.parts[0].text;
-        console.log("[AI RAW RESPONSE]:", text);
-
-        // More robust JSON extraction
-        let jsonStr = text;
-        if (text.includes("```")) {
-            jsonStr = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/)?.[1] || text;
+        const aiUrl = process.env.AI_SERVICE_URL;
+        if (!aiUrl) {
+            console.warn("[WARNING] AI_SERVICE_URL is not defined in environment.");
+            return res.status(200).json({
+                analysis: {
+                    verified: true, department: null, detected_issue: type || "General Issue",
+                    explanation: "ACCEPTED: Verification pending (AI configuration missing)", severity: "Medium", ai_confidence: 50
+                }
+            });
         }
-        jsonStr = jsonStr.trim();
 
-        const analysis = JSON.parse(jsonStr);
+        console.log(`[AI] Dispatching visual analysis to ${aiUrl}/analyze`);
+        
+        let analysis;
+        try {
+            const aiResponse = await axios.post(`${aiUrl}/analyze`, formData, {
+                headers: formData.getHeaders(),
+                timeout: 30000
+            });
+            const result = aiResponse.data;
+            
+            // Map FastAPI format to expected format
+            analysis = {
+                verified: result.is_valid_civic_issue,
+                department: null, // Let createReport auto-route
+                detected_issue: result.issue_type,
+                explanation: result.ai_summary || "Processed by local AI",
+                severity: result.severity || "Medium",
+                ai_confidence: result.confidence ? result.confidence * 100 : 85
+            };
+        } catch (postErr) {
+            console.error("[AI ERROR] Local AI Server Failed:", postErr.message);
+            // Graceful fallback to prevent crashes
+            analysis = {
+                verified: true,
+                department: null,
+                detected_issue: type || "General Issue",
+                explanation: "ACCEPTED: Verification pending (AI server down)",
+                severity: "Medium",
+                ai_confidence: 50
+            };
+        }
+
         res.status(200).json({ analysis });
 
     } catch (error) {
@@ -179,20 +149,39 @@ exports.detectLocationFromText = async (req, res) => {
             If no location is mentioned, set "found": false.
         `;
 
-        const result = await generativeModel.generateContent(prompt);
-        const response = await result.response;
-        const rawText = response.candidates[0].content.parts[0].text;
+        const ollamaUrl = process.env.OLLAMA_SERVICE_URL;
+        
+        if (!ollamaUrl) {
+            console.warn("[WARNING] OLLAMA_SERVICE_URL is not defined in environment.");
+            return res.status(200).json({ found: false, location_string: text, confidence: "Low" });
+        }
+
+        let jsonStr;
+        try {
+            const result = await axios.post(`${ollamaUrl}/api/generate`, {
+                model: "llama3.2:1b",
+                prompt: prompt,
+                format: "json",
+                stream: false
+            }, { timeout: 15000 });
+            
+            jsonStr = result.data.response;
+        } catch (postErr) {
+            console.error("[Ollama HTTP Error] Location Detection Failed:", postErr.message);
+            // Graceful fallback
+            return res.status(200).json({ found: false, location_string: text, confidence: "Low" });
+        }
 
         // Clean JSON
-        let jsonStr = rawText;
-        if (rawText.includes("```")) {
-            jsonStr = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/)?.[1] || rawText;
+        if (jsonStr.includes("```")) {
+            jsonStr = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/)?.[1] || jsonStr;
         }
 
         res.status(200).json(JSON.parse(jsonStr.trim()));
     } catch (error) {
-        console.error("Location Detection Error:", error);
-        res.status(500).json({ error: "AI Analysis Failed" });
+        console.error("Location Detection Final Error:", error);
+        // Graceful fallback
+        res.status(200).json({ found: false, location_string: text, confidence: "Low" });
     }
 };
 
@@ -345,8 +334,8 @@ exports.getAllReports = async (req, res) => {
             const mediaPath = row.image_url || null;
             const fullMediaUrl = mediaPath ? `${req.protocol}://${req.get('host')}${mediaPath}` : null;
             const ext = mediaPath ? mediaPath.split('.').pop().toLowerCase() : '';
-            const mediaType = ['mp4','webm','mov','avi'].includes(ext) ? 'video'
-                            : ['mp3','wav','ogg','m4a'].includes(ext) ? 'audio' : 'image';
+            const mediaType = ['mp4', 'webm', 'mov', 'avi'].includes(ext) ? 'video'
+                : ['mp3', 'wav', 'ogg', 'm4a'].includes(ext) ? 'audio' : 'image';
             return {
                 id: row.id,
                 type: row.issue_type,
@@ -384,7 +373,7 @@ exports.getAllReports = async (req, res) => {
 exports.getDashboardStats = async (req, res) => {
     try {
         const userId = req.user.id;
-        
+
         // 1. Aggregate Stats
         const statsQuery = `
             SELECT 
@@ -486,14 +475,14 @@ exports.getUserReports = async (req, res) => {
             ORDER BY t.created_at DESC;
         `;
         const result = await pgDb.query(query, [userId]);
-        
+
         const reports = result.rows.map(row => {
             const mediaPath = row.image_url || null;
             const fullMediaUrl = mediaPath ? `${req.protocol}://${req.get('host')}${mediaPath}` : null;
             const ext = mediaPath ? mediaPath.split('.').pop().toLowerCase() : '';
-            const mediaType = ['mp4','webm','mov','avi'].includes(ext) ? 'video'
-                            : ['mp3','wav','ogg','m4a'].includes(ext) ? 'audio' : 'image';
-            
+            const mediaType = ['mp4', 'webm', 'mov', 'avi'].includes(ext) ? 'video'
+                : ['mp3', 'wav', 'ogg', 'm4a'].includes(ext) ? 'audio' : 'image';
+
             return {
                 id: row.id,
                 type: row.issue_type,
@@ -546,8 +535,8 @@ exports.getSingleReport = async (req, res) => {
         const mediaPath = row.image_url || null;
         const fullMediaUrl = mediaPath ? `${req.protocol}://${req.get('host')}${mediaPath}` : null;
         const ext = mediaPath ? mediaPath.split('.').pop().toLowerCase() : '';
-        const mediaType = ['mp4','webm','mov','avi'].includes(ext) ? 'video'
-                        : ['mp3','wav','ogg','m4a'].includes(ext) ? 'audio' : 'image';
+        const mediaType = ['mp4', 'webm', 'mov', 'avi'].includes(ext) ? 'video'
+            : ['mp3', 'wav', 'ogg', 'm4a'].includes(ext) ? 'audio' : 'image';
         const report = {
             id: row.id,
             type: row.issue_type,
@@ -597,8 +586,8 @@ exports.getDepartmentReports = async (req, res) => {
             const mediaPath = row.image_url || null;
             const fullMediaUrl = mediaPath ? `${req.protocol}://${req.get('host')}${mediaPath}` : null;
             const ext = mediaPath ? mediaPath.split('.').pop().toLowerCase() : '';
-            const mediaType = ['mp4','webm','mov','avi'].includes(ext) ? 'video'
-                            : ['mp3','wav','ogg','m4a'].includes(ext) ? 'audio' : 'image';
+            const mediaType = ['mp4', 'webm', 'mov', 'avi'].includes(ext) ? 'video'
+                : ['mp3', 'wav', 'ogg', 'm4a'].includes(ext) ? 'audio' : 'image';
             return {
                 id: row.id,
                 type: row.issue_type,
