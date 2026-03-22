@@ -658,27 +658,34 @@ exports.receiveWebhook = async (req, res) => {
         if (step === 'NEW') {
             // Step 1: Play welcome message & request photo
             await sendWhatsAppAudio(chatId, 'welcome_message.mp3');
+            await sendWhatsAppMessage(chatId, "Namaste! Nagar Alert Hub mein aapka swagat hai. 🏛️\n\nKripiya samasya ki photo/video/audio aur apni WhatsApp Location ek sath bhejein. 📍📸");
             await query("UPDATE whatsapp_sessions SET current_step = 'AWAITING_ISSUE', updated_at = CURRENT_TIMESTAMP WHERE phone_number = $1", [chatId]);
         } 
         else if (step === 'AWAITING_ISSUE') {
             // Task 1: AI Call & Request Location
-            if (imageUrl) {
-                let aiResult = null;
-                try {
-                    const aiUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-                    const aiResponse = await require('axios').post(`${aiUrl}/analyze`, { image_url: imageUrl });
-                    aiResult = aiResponse.data;
-                } catch (aiErr) {
-                    console.error("[Green API] AI Service Error:", aiErr.message);
-                    aiResult = { category: "Uncategorized (AI Error)", severity: "Moderate", description: text || "Image submitted without AI description" };
-                }
-
-                const tempData = JSON.stringify({ imageUrl, caption: text, aiResult });
-                await query("UPDATE whatsapp_sessions SET current_step = 'AWAITING_LOCATION', temp_data = $1, updated_at = CURRENT_TIMESTAMP WHERE phone_number = $2", [tempData, chatId]);
-                await sendWhatsAppAudio(chatId, 'ask_location_hi.mp3');
-            } else {
+            const currentImageUrl = req.body.messageData?.fileMessageData?.downloadUrl || imageUrl;
+            
+            if (!currentImageUrl) {
+                console.error('Image URL not found in payload');
                 await sendWhatsAppMessage(chatId, "⚠️ Please send a clear photo of the incident first. We cannot proceed without an image.");
+                return;
             }
+
+            let aiResult = null;
+            try {
+                const aiUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+                const aiResponse = await require('axios').post(`${aiUrl}/analyze`, { image_url: currentImageUrl });
+                aiResult = aiResponse.data;
+            } catch (aiErr) {
+                console.error("[Green API] AI Service Error:", aiErr.message);
+                aiResult = { category: "Uncategorized (AI Error)", severity: "Moderate", description: text || "Image submitted without AI description" };
+            }
+
+            const tempData = JSON.stringify({ imageUrl: currentImageUrl, caption: text, aiResult });
+            await query("UPDATE whatsapp_sessions SET current_step = 'AWAITING_LOCATION', temp_data = $1, updated_at = CURRENT_TIMESTAMP WHERE phone_number = $2", [tempData, chatId]);
+            
+            await sendWhatsAppAudio(chatId, 'ask_location_hi.mp3');
+            await sendWhatsAppMessage(chatId, "Kripiya apni WhatsApp Live/Current Location bhejein taaki hum aage badh sakein. 📍");
         }
         else if (step === 'AWAITING_LOCATION') {
             // Task 2: Validate location & Auto-Register & Ticket Creation
@@ -711,7 +718,7 @@ exports.receiveWebhook = async (req, res) => {
                 // Step C: Cleanup & Notify
                 await query("DELETE FROM whatsapp_sessions WHERE phone_number = $1", [chatId]);
                 await sendWhatsAppAudio(chatId, 'report_accepted.mp3');
-                await sendWhatsAppMessage(chatId, `✅ Aapki shikayat darj ho gayi hai. Ticket ID: #${ticketId}. Our team is on it!`);
+                await sendWhatsAppMessage(chatId, "✅ Aapki shikayat darj ho gayi hai. Ticket ID: #" + ticketId + ". Jaldi update diya jayega.");
             } else {
                 await sendWhatsAppMessage(chatId, "📍 Please use WhatsApp's *Location Attachment* feature to pin the exact location.");
             }
