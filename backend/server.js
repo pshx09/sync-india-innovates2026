@@ -17,9 +17,10 @@ const WHAPI_TOKEN = process.env.WHAPI_TOKEN;
 // Firebase and Google Cloud initialization logic has been cleaned up for PostgreSQL/Local AI
 
 // Middleware
+// Hackathon-Safe CORS (Allows Vercel and Localhost to connect)
 app.use(cors({
-    origin: 'http://localhost:5173', // Vite default port
-    credentials: true
+    origin: '*', // Stars means "Allow Everyone" (Vercel, Localhost, etc.)
+    credentials: false // When using '*', credentials must be false
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(bodyParser.json({ limit: '10mb' }));
