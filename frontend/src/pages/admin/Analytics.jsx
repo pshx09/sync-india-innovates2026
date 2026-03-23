@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from 'recharts';
 import { Download } from 'lucide-react';
 import AdminLayout from './AdminLayout';
-import { getDatabase, ref, onValue } from 'firebase/database';
+
 import { useAuth } from '../../context/AuthContext';
 import { sanitizeKey } from '../../utils/firebaseUtils';
 

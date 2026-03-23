@@ -6,7 +6,7 @@ import {
     Shield, Clock, MessageSquare, Send, Bell
 } from 'lucide-react';
 import AdminLayout from './AdminLayout';
-import { getDatabase, ref, onValue, update } from 'firebase/database';
+
 import { toast } from 'react-hot-toast';
 import { sanitizeKey } from '../../utils/firebaseUtils';
 

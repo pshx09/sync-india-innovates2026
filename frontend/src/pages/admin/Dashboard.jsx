@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { MoreVertical, MapPin, AlertTriangle, CheckCircle, Sparkles, Plus, Search, Maximize2, X, Send, ThumbsDown, CheckSquare, Clock, Video, AlignLeft, ChevronRight } from 'lucide-react';
 import AdminLayout from './AdminLayout';
 import { useAuth } from '../../context/AuthContext';
-import { getDatabase, ref, onValue, update } from 'firebase/database';
+
 import CommandCenterMap from '../../components/CommandCenterMap';
 import { toast } from 'react-hot-toast';
 import { sanitizeKey } from '../../utils/firebaseUtils';

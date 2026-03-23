@@ -7,7 +7,7 @@ import {
     MoreVertical, ExternalLink, Shield, CheckCircle, XCircle,
     AlertTriangle, ArrowRight, List, Grid, ChevronRight
 } from 'lucide-react';
-import { getDatabase, ref, onValue, update } from 'firebase/database';
+
 import { toast } from 'react-hot-toast';
 import { sanitizeKey } from '../../utils/firebaseUtils';
 

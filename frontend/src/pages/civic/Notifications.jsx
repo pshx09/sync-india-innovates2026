@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Bell, CheckCircle, AlertOctagon, Info, Trash2, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CivicLayout from './CivicLayout';
-import { getDatabase, ref, onValue } from "firebase/database";
-import { auth } from '../../services/firebase';
+
+
 
 const Notifications = () => {
     const [notifications, setNotifications] = useState([]);

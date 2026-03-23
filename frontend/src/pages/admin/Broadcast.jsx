@@ -3,7 +3,6 @@ import { Send, AlertTriangle, CheckCircle, Clock, Smartphone, MessageSquare } fr
 import { useLocation } from 'react-router-dom';
 import AdminLayout from './AdminLayout';
 import { useAuth } from '../../context/AuthContext';
-import { getDatabase, ref, push, onValue, serverTimestamp } from 'firebase/database';
 import { toast } from 'react-hot-toast';
 
 const Broadcast = () => {
@@ -45,19 +44,22 @@ const Broadcast = () => {
     }, [location.state?.incidentId]);
 
     useEffect(() => {
-        const db = getDatabase();
-        const broadcastRef = ref(db, 'broadcasts');
-        const unsubscribe = onValue(broadcastRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                const list = Object.keys(data).map(key => ({
-                    id: key,
-                    ...data[key]
-                })).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)); // Removed strict department filter to show global history
-                setHistory(list);
+        const fetchBroadcastHistory = async () => {
+            try {
+                const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
+                const token = localStorage.getItem('token');
+                const headers = { 'Content-Type': 'application/json' };
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+                const res = await fetch(`${API_BASE_URL}/api/reports/broadcasts`, { headers });
+                if (res.ok) {
+                    const data = await res.json();
+                    setHistory(data.broadcasts || data || []);
+                }
+            } catch (error) {
+                console.error("[Broadcast] History fetch error:", error);
             }
-        });
-        return () => unsubscribe();
+        };
+        fetchBroadcastHistory();
     }, [currentUser?.department]);
 
     const handleSend = async () => {

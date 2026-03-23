@@ -115,48 +115,28 @@ export default function Register() {
 
             // Small delay to let user see the success message
             setTimeout(() => {
+                const id = result?.user?.id || result?.id;
                 navigate('/verify-otp', {
                     state: {
                         email: formData.email,
                         mobile: formData.mobile,
                         address: userType === 'citizen' ? address : null,
                         userType: userType,
-                        uid: result.uid
+                        uid: id
                     }
                 });
             }, 1000);
 
         } catch (err) {
             console.error(err);
-            toast.error("Registration Failed: " + err.message);
+            const msg = err.error || err.message || "Unknown error occurred";
+            toast.error("Registration Failed: " + msg);
         } finally {
             setLoading(false);
         }
     };
 
-    // --- GOOGLE SIGN IN ---
-    const handleGoogleSignIn = async () => {
-        setLoading(true);
-        try {
-            // Mock Google Sign In via Context (using register for simplicity here, or login)
-            await register({
-                email: 'google-user@example.com',
-                firstName: 'Google',
-                lastName: 'User',
-                mobile: null,
-                role: userType,
-                department: null
-            });
 
-            navigate(userType === 'citizen' ? '/citizen/dashboard' : '/admin/dashboard');
-
-        } catch (error) {
-            console.error(error);
-            toast.error("Google Sign In Failed: " + error.message);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     const handleLocation = () => {
         if (!navigator.geolocation) { toast.error('Geolocation not supported'); return; }

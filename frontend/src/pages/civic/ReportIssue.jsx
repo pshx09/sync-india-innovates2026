@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import CivicLayout from './CivicLayout';
 import { verifyImageWithAI, submitReportToBackend } from '../../services/backendService';
 import { uploadImage, uploadVideo, uploadAudio } from '../../services/storageService';
-import { auth } from '../../services/firebase';
+
 import { mappls, mappls_plugin } from 'mappls-web-maps';
 import { toast } from 'react-hot-toast';
 import { useTheme } from '../../context/ThemeContext';

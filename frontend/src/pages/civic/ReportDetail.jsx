@@ -2,8 +2,8 @@ import React from 'react';
 import { MapPin, Clock, Share2, CheckCircle, AlertTriangle, ThumbsUp, ExternalLink } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import CivicLayout from './CivicLayout';
-import { getDatabase, ref, onValue } from "firebase/database";
-import { auth } from '../../services/firebase';
+
+
 import { mappls } from 'mappls-web-maps';
 const mapplsClassObject = new mappls();
 const ReportDetail = () => {

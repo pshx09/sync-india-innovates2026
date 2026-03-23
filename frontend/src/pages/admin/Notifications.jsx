@@ -2,9 +2,7 @@ import React, { useState } from 'react';
 import AdminLayout from './AdminLayout';
 import { Bell, Check, Trash2, AlertTriangle, Info, CheckCircle, Clock } from 'lucide-react';
 
-import { getDatabase, ref, onValue } from 'firebase/database';
 import { useAuth } from '../../context/AuthContext';
-import { sanitizeKey } from '../../utils/firebaseUtils';
 
 const AdminNotifications = () => {
     const { currentUser } = useAuth();
@@ -12,40 +10,37 @@ const AdminNotifications = () => {
     const [notifications, setNotifications] = useState([]);
 
     React.useEffect(() => {
-        if (!currentUser?.department) return;
+        const fetchNotifications = async () => {
+            try {
+                const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
+                const token = localStorage.getItem('token');
+                const headers = { 'Content-Type': 'application/json' };
+                if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        const db = getDatabase();
-        const sanitizedDept = sanitizeKey(currentUser.department);
-        const reportsRef = ref(db, `reports/by_department/${sanitizedDept}`);
-
-        const unsubscribe = onValue(reportsRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                const loadedNotifs = Object.keys(data).map(key => {
-                    const r = data[key];
-                    // Logic to determine if "read" - for now, treat Pending as Unread
-                    const isRead = r.status !== 'Pending';
-
-                    return {
-                        id: key,
+                const res = await fetch(`${API_BASE_URL}/api/reports?department=${currentUser?.department || ''}`, { headers });
+                if (res.ok) {
+                    const data = await res.json();
+                    const reports = data.reports || data || [];
+                    const loadedNotifs = reports.map(r => ({
+                        id: r.id,
                         type: r.priority === 'High' ? 'alert' : 'info',
-                        title: `New ${r.type || 'Civic'} Report`,
-                        message: r.description || ' No description provided.',
-                        time: new Date(r.createdAt || r.timestamp).toLocaleString(),
-                        read: isRead,
-                        reportId: key // Keep reference
-                    };
-                });
-
-                // Sort by time descending
-                loadedNotifs.sort((a, b) => new Date(b.time) - new Date(a.time));
-                setNotifications(loadedNotifs);
-            } else {
-                setNotifications([]);
+                        title: `New ${r.type || r.category || 'Civic'} Report`,
+                        message: r.description || 'No description provided.',
+                        time: new Date(r.created_at || r.createdAt).toLocaleString(),
+                        read: r.status !== 'Pending',
+                        reportId: r.id
+                    }));
+                    loadedNotifs.sort((a, b) => new Date(b.time) - new Date(a.time));
+                    setNotifications(loadedNotifs);
+                }
+            } catch (error) {
+                console.error("[Notifications] Fetch error:", error);
             }
-        });
+        };
 
-        return () => unsubscribe();
+        if (currentUser?.department) {
+            fetchNotifications();
+        }
     }, [currentUser?.department]);
 
     const filtered = filter === 'all' ? notifications : notifications.filter(n => !n.read);

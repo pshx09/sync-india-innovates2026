@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { MapPin, X, Navigation, Filter, AlertCircle, Clock, CheckCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import CivicLayout from './CivicLayout';
-import { getDatabase, ref, onValue } from "firebase/database";
-import { auth } from '../../services/firebase';
+
+
 import { mappls } from 'mappls-web-maps';
 const mapplsClassObject = new mappls();
 import { useTheme } from '../../context/ThemeContext';

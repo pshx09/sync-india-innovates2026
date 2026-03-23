@@ -1,11 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import {
-    signOut,
-    onAuthStateChanged,
-    GoogleAuthProvider,
-    signInWithPopup,
-} from 'firebase/auth';
-import { auth } from '../services/firebase';
+import axios from 'axios';
 
 const AuthContext = createContext();
 
@@ -33,7 +27,6 @@ export function AuthProvider({ children }) {
             role: role || userData?.role || 'citizen',
             name: userData?.name || userData?.email,
             department: userData?.department || null,
-            uid: userData?.id || 'jwt-user',
         };
         setCurrentUser(userObj);
         setUserRole(role || 'citizen');
@@ -55,7 +48,6 @@ export function AuthProvider({ children }) {
                         role: payload.role || 'citizen',
                         name: payload.email,
                         department: payload.department || null,
-                        uid: payload.id || 'jwt-user',
                     });
                     setUserRole(payload.role || 'citizen');
                     setIsJwtSession(true);
@@ -69,44 +61,34 @@ export function AuthProvider({ children }) {
                 console.warn("[AuthContext] Invalid JWT:", e.message);
                 localStorage.removeItem('token');
             }
+        } else {
+            // clear if no token
+            setCurrentUser(null);
+            setUserRole(null);
+            setLoading(false);
         }
-
-        // STEP 2: Firebase Auth listener (for Google login only)
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            if (user) {
-                console.log("[AuthContext] Firebase user detected:", user.email);
-                setCurrentUser({
-                    uid: user.uid,
-                    email: user.email,
-                    displayName: user.displayName,
-                    photoURL: user.photoURL,
-                    role: 'citizen',
-                });
-                setUserRole('citizen');
-            } else {
-                // ONLY clear if this is NOT a JWT session
-                if (!localStorage.getItem('token')) {
-                    setCurrentUser(null);
-                    setUserRole(null);
-                }
-            }
-            setLoading(false);
-        });
-
-        // Safety timeout
-        const timeout = setTimeout(() => {
-            setLoading(false);
-        }, 4000);
-
-        return () => {
-            unsubscribe();
-            clearTimeout(timeout);
-        };
     }, []);
 
-    const googleLogin = async () => {
-        const provider = new GoogleAuthProvider();
-        return signInWithPopup(auth, provider);
+    const login = async (email, password) => {
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+        try {
+            const response = await axios.post(`${API_URL}/auth/login`, { email, password });
+            return response.data;
+        } catch (error) {
+            console.error("[AuthContext] Login Error:", error);
+            throw error.response?.data || error;
+        }
+    };
+
+    const register = async (userData) => {
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+        try {
+            const response = await axios.post(`${API_URL}/auth/register`, userData);
+            return response.data;
+        } catch (error) {
+            console.error("[AuthContext] Register Error:", error);
+            throw error.response?.data || error;
+        }
     };
 
     const logout = useCallback(() => {
@@ -115,7 +97,6 @@ export function AuthProvider({ children }) {
         setCurrentUser(null);
         setUserRole(null);
         setIsJwtSession(false);
-        return signOut(auth).catch(() => {}); // Don't crash if Firebase isn't initialized
     }, []);
 
     const refreshUserProfile = useCallback(async () => {
@@ -133,7 +114,6 @@ export function AuthProvider({ children }) {
                 setCurrentUser(prev => ({
                     ...prev,
                     id: user.id,
-                    uid: user.id,
                     email: user.email,
                     name: user.name,
                     role: user.role,
@@ -151,7 +131,8 @@ export function AuthProvider({ children }) {
         currentUser,
         role: userRole,
         isAuthenticated: !!currentUser,
-        googleLogin,
+        login,
+        register,
         logout,
         loading,
         setJwtUser,
