@@ -50,7 +50,11 @@ exports.analyzeMedia = async (base64Data, mimeType) => {
         let parsed;
         try {
             const aiResponse = await axios.post(`${aiUrl}/analyze`, formData, {
-                headers: formData.getHeaders(),
+                headers: {
+                    ...formData.getHeaders(),
+                    'ngrok-skip-browser-warning': 'true',
+                    'User-Agent': 'NagarBackend/1.0'
+                },
                 timeout: 60000
             });
             const result = aiResponse.data;

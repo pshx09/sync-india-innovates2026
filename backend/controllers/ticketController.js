@@ -30,19 +30,106 @@ exports.createTicket = async (req, res) => {
         }
         form.append('location_data', `Lat: ${lat}, Lng: ${lng}`);
 
-        console.log("[Node] Forwarding media + context to AI Forensics Service v2...");
-        
-        let aiResult;
-        try {
-            const aiResponse = await axios.post('http://localhost:8000/analyze', form, {
-                headers: { ...form.getHeaders() },
-                timeout: 120000 // 2 min timeout for AI processing
+        // ====== AI SERVICE CALL WITH RETRY + CIRCUIT BREAKER ======
+        const AI_SERVICE_URL = process.env.AI_SERVICE_URL;
+        const MAX_RETRIES = 3;
+        const BASE_DELAY_MS = 1000; // 1s → 2s → 4s exponential backoff
+
+        let aiResult = null;
+        let aiReachable = false;
+
+        if (!AI_SERVICE_URL) {
+            console.warn("[Node] ⚠️ AI_SERVICE_URL is not set in environment. Skipping AI verification.");
+        } else {
+            for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+                try {
+                    console.log(`[Node] AI Forensics attempt ${attempt}/${MAX_RETRIES} → ${AI_SERVICE_URL}/analyze`);
+                    
+                    // Re-create form stream for each retry (streams are consumed after first read)
+                    const retryForm = new FormData();
+                    retryForm.append('file', fs.createReadStream(req.file.path), {
+                        filename: req.file.originalname,
+                        contentType: req.file.mimetype
+                    });
+                    if (description) retryForm.append('description', description);
+                    retryForm.append('location_data', `Lat: ${lat}, Lng: ${lng}`);
+
+                    const aiResponse = await axios.post(`${AI_SERVICE_URL}/analyze`, retryForm, {
+                        headers: {
+                            ...retryForm.getHeaders(),
+                            'ngrok-skip-browser-warning': 'true',
+                            'User-Agent': 'NagarBackend/1.0'
+                        },
+                        timeout: 60000, // 60s per attempt — LLaVA on local hardware is slow
+                        maxContentLength: Infinity,
+                        maxBodyLength: Infinity
+                    });
+
+                    aiResult = aiResponse.data;
+                    aiReachable = true;
+                    console.log("[Node] ✅ AI Forensics result:", JSON.stringify(aiResult, null, 2));
+                    break; // Success — exit retry loop
+
+                } catch (aiError) {
+                    const status = aiError.response?.status;
+                    const isRetryable = !status || status >= 500 || aiError.code === 'ECONNREFUSED' || aiError.code === 'ECONNABORTED' || aiError.code === 'ETIMEDOUT';
+
+                    console.error(`[Node] AI attempt ${attempt} failed: ${aiError.message} (status=${status || 'N/A'}, retryable=${isRetryable})`);
+
+                    if (!isRetryable) {
+                        // 4xx errors (bad request, etc.) — don't retry, break immediately
+                        console.error("[Node] Non-retryable AI error. Skipping further attempts.");
+                        break;
+                    }
+
+                    if (attempt < MAX_RETRIES) {
+                        const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+                        console.log(`[Node] Retrying in ${delay}ms...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+                }
+            }
+        }
+
+        // ====== CIRCUIT BREAKER: Graceful Degradation ======
+        if (!aiReachable || !aiResult) {
+            console.warn("[Node] 🔶 CIRCUIT BREAKER TRIPPED — AI Service unreachable after all retries. Accepting ticket for manual review.");
+
+            const image_url = `/uploads/${req.file.filename}`;
+            const fallbackDesc = description || "No description provided.";
+
+            const insertQuery = `
+                INSERT INTO tickets (user_id, user_phone, issue_type, severity, image_url, location, description, department, ai_summary, ai_confidence, status)
+                VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($6, $7), 4326), $8, $9, $10, $11, $12)
+                RETURNING id, user_id, user_phone, issue_type, severity, image_url, status, created_at,
+                          ST_X(location::geometry) as lng, ST_Y(location::geometry) as lat, description, department, ai_summary, ai_confidence;
+            `;
+
+            const values = [
+                req.user?.id || null,
+                user_phone || null,
+                'pending_review',
+                'Medium',
+                image_url,
+                lng,
+                lat,
+                fallbackDesc,
+                department || 'Municipal/Waste',
+                'AI Service was unreachable. Pending manual verification.',
+                0,
+                'pending_manual_verification'
+            ];
+
+            const result = await db.query(insertQuery, values);
+            const newTicket = result.rows[0];
+            console.log(`[Node] 🔶 Ticket #${newTicket.id} saved as pending_manual_verification`);
+
+            return res.status(201).json({
+                message: "Ticket accepted for manual review — AI Forensics was temporarily unavailable.",
+                ticket: newTicket,
+                ai_data: null,
+                warning: "AI verification was skipped due to service unavailability. An admin will review this report manually."
             });
-            aiResult = aiResponse.data;
-            console.log("[Node] AI Forensics result:", JSON.stringify(aiResult, null, 2));
-        } catch (aiError) {
-            console.error("[Node] AI Service Error:", aiError.message);
-            return res.status(503).json({ error: "AI Forensics Service is unreachable or failed." });
         }
 
         // ====== 2. STRICT GATEKEEPING: Fake/Watermark Rejection ======
