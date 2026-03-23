@@ -18,10 +18,21 @@ const WHAPI_TOKEN = process.env.WHAPI_TOKEN;
 
 // Middleware
 // Hackathon-Safe CORS (Allows Vercel and Localhost to connect)
+//app.use(cors({
+//    origin: '*', // Stars means "Allow Everyone" (Vercel, Localhost, etc.)
+//    credentials: false // When using '*', credentials must be false
+//));
+
+
+// 🚨 VERCEL-READY CORS SETUP 🚨
 app.use(cors({
-    origin: '*', // Stars means "Allow Everyone" (Vercel, Localhost, etc.)
-    credentials: false // When using '*', credentials must be false
+    origin: [
+        'http://localhost:5173', // Localhost testing ke liye
+        'https://sync-india-innovates2026.vercel.app' // Aapka Live Vercel link! (End mein slash '/' mat lagana)
+    ],
+    credentials: true
 }));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
