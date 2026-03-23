@@ -2,100 +2,68 @@ import React, { useState } from 'react';
 import { Bell, CheckCircle, AlertOctagon, Info, Trash2, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CivicLayout from './CivicLayout';
-
-
+import { useAuth } from '../../context/AuthContext';
 
 const Notifications = () => {
+    const { currentUser } = useAuth();
     const [notifications, setNotifications] = useState([]);
 
     React.useEffect(() => {
-        const db = getDatabase(auth.app);
+        const fetchNotifications = async () => {
+            try {
+                const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
+                const token = localStorage.getItem('token');
+                if (!token) return;
 
-        let reportNotifs = [];
-        let broadcastNotifs = [];
+                const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
 
-        const updateState = () => {
-            const combined = [...reportNotifs, ...broadcastNotifs].sort((a, b) => b.timestamp - a.timestamp);
-            setNotifications(combined);
-        };
+                // Fetch user's reports as notifications
+                const reportsRes = await fetch(`${API_BASE_URL}/api/reports/dashboard-stats`, { headers });
+                let reportNotifs = [];
+                if (reportsRes.ok) {
+                    const data = await reportsRes.json();
+                    const recent = data.recentActivity || [];
+                    reportNotifs = recent.map(r => ({
+                        id: `report_${r.id}`,
+                        type: r.status === 'Resolved' ? 'success' : r.status === 'Pending' ? 'info' : 'alert',
+                        title: r.status === 'Resolved' ? 'Report Resolved' : r.status === 'Pending' ? 'Report Submitted' : `Report ${r.status}`,
+                        message: r.description || `Your ${r.category || 'civic'} report status: ${r.status}`,
+                        time: new Date(r.created_at || r.createdAt).toLocaleString(),
+                        timestamp: new Date(r.created_at || r.createdAt).getTime(),
+                        read: r.status !== 'Pending'
+                    }));
+                }
 
-        // 1. Listen to Reports
-        const reportsRef = ref(db, 'reports');
-        const unsubReports = onValue(reportsRef, (snapshot) => {
-            reportNotifs = []; // Reset local array
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                Object.keys(data).forEach(key => {
-                    const r = data[key];
-                    if (r.userId === auth.currentUser?.uid) {
-                        // Creation
-                        reportNotifs.push({
-                            id: `${key}_created`,
-                            type: 'info',
-                            title: 'Report Submitted',
-                            message: `Your report for ${r.type} has been received.`,
-                            time: new Date(r.timestamp).toLocaleDateString(),
-                            timestamp: r.timestamp,
-                            read: true
-                        });
-                        // Updates
-                        if (r.status !== 'Pending') {
-                            reportNotifs.push({
-                                id: `${key}_status`,
-                                type: r.status === 'Resolved' ? 'success' : 'alert',
-                                title: `Report ${r.status}`,
-                                message: `Your report for ${r.type} is now ${r.status}.`,
-                                time: new Date(r.timestamp).toLocaleDateString(),
-                                timestamp: r.timestamp + 1000,
-                                read: false
-                            });
-                        }
-                        // AI
-                        if (r.aiVerified) {
-                            reportNotifs.push({
-                                id: `${key}_ai`,
-                                type: 'success',
-                                title: 'Points Awarded',
-                                message: `Your ${r.type} report was verified by AI! +10 Karma Points.`,
-                                time: new Date(r.timestamp).toLocaleDateString(),
-                                timestamp: r.timestamp + 500,
-                                read: false
-                            });
-                        }
+                // Fetch broadcasts
+                let broadcastNotifs = [];
+                try {
+                    const broadcastRes = await fetch(`${API_BASE_URL}/api/reports/broadcasts`, { headers });
+                    if (broadcastRes.ok) {
+                        const bData = await broadcastRes.json();
+                        const broadcasts = bData.broadcasts || bData || [];
+                        broadcastNotifs = broadcasts.map(b => ({
+                            id: `broadcast_${b.id}`,
+                            type: 'alert',
+                            title: `📢 Official Alert: ${b.area || 'General'}`,
+                            message: b.message || "No details provided.",
+                            time: b.timestamp ? new Date(b.timestamp).toLocaleString() : 'Recently',
+                            timestamp: b.timestamp || Date.now(),
+                            read: false
+                        }));
                     }
-                });
-            }
-            updateState();
-        });
+                } catch (e) {
+                    console.warn("[Notifications] Broadcast fetch skipped:", e.message);
+                }
 
-        // 2. Listen to Broadcasts
-        const broadcastsRef = ref(db, 'broadcasts');
-        const unsubBroadcasts = onValue(broadcastsRef, (snapshot) => {
-            broadcastNotifs = []; // Reset local
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                Object.keys(data).forEach(key => {
-                    const b = data[key];
-                    // Show all broadcasts to everyone for now (or filter by city if avail)
-                    broadcastNotifs.push({
-                        id: key,
-                        type: 'alert', // Broadcasts are usually alerts
-                        title: `📢 Official Alert: ${b.target || 'General'}`,
-                        message: b.message || "No details provided.",
-                        time: new Date(b.timestamp).toLocaleString(),
-                        timestamp: b.timestamp,
-                        read: false
-                    });
-                });
+                const combined = [...reportNotifs, ...broadcastNotifs].sort((a, b) => b.timestamp - a.timestamp);
+                setNotifications(combined);
+            } catch (error) {
+                console.error("[Notifications] Fetch error:", error);
             }
-            updateState();
-        });
-
-        return () => {
-            unsubReports();
-            unsubBroadcasts();
         };
-    }, []);
+
+        fetchNotifications();
+    }, [currentUser]);
 
     const handleDismiss = (id) => {
         setNotifications(notifications.filter(n => n.id !== id));

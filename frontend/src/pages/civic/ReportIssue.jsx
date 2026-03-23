@@ -13,6 +13,7 @@ import { uploadImage, uploadVideo, uploadAudio } from '../../services/storageSer
 import { mappls, mappls_plugin } from 'mappls-web-maps';
 import { toast } from 'react-hot-toast';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 
 const mapplsClassObject = new mappls();
 const mapplsPluginObject = new mappls_plugin();
@@ -38,6 +39,7 @@ const darkMapStyles = [
 const ReportIssue = () => {
     const { theme } = useTheme();
     const navigate = useNavigate();
+    const { currentUser } = useAuth();
 
     // Media states
     const [mediaType, setMediaType] = useState(null); // 'image', 'video', 'audio'
@@ -228,7 +230,7 @@ const ReportIssue = () => {
             formData.append('lng', location.lng);
             formData.append('description', e.target.elements.description.value);
             formData.append('department', department);
-            formData.append('user_phone', auth.currentUser?.phoneNumber || 'Anonymous');
+            formData.append('user_phone', currentUser?.mobile || 'Anonymous');
 
             // Send to backend
             const token = localStorage.getItem('token');
