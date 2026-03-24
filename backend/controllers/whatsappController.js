@@ -632,49 +632,53 @@ const ISSUE_TO_DEPARTMENT = {
 };
 
 exports.receiveWebhook = async (req, res) => {
-    // 1. IMMEDIATE ACKNOWLEDGMENT (Prevent retry loops)
-    // 1. DEFINE BODY FIRST!
+    // 1. TOP-LEVEL LOGGING (Before ANY logic)
     const body = req.body;
-    const chatId = body?.senderData?.chatId;
+    console.log("\n\n🚪 [FRONT-DOOR RAW PAYLOAD]:", JSON.stringify(body, null, 2));
+    
+    // Robust extraction for ChatId and Sender Info (Green API sometimes varies structure)
+    const senderData = body?.senderData || body?.messageData?.senderData || {};
+    const instanceData = body?.instanceData || {};
+    const chatId = senderData?.chatId || body?.chatId || null;
+    const sender = senderData?.sender || null;
+    const wid = instanceData?.wid || null;
+
+    // 2. AUDIT THE IGNORE BLOCK
+    console.log("[DEBUG EXIT CHECK] chatId:", chatId, " | sender:", sender, " | wid:", wid);
 
     // 🚨 NEW FIX: Ignore Group Messages (@g.us) and Status Updates
-    if (!chatId || chatId.includes('@g.us') || chatId === 'status@broadcast' || body?.senderData?.sender === body?.instanceData?.wid) {
-        return; // Chup-chap exit kar jao
+    if (!chatId || (chatId && chatId.includes('@g.us')) || chatId === 'status@broadcast' || sender === wid) {
+        console.log("[DEBUG] Webhook ignored based on EXIT CHECK conditions.");
+        return res.status(200).send('OK'); 
     }
 
-    // 2. IMMEDIATE ACKNOWLEDGMENT (Prevent retry loops)
+    // 3. IMMEDIATE ACKNOWLEDGMENT (Prevent retry loops)
     res.status(200).send('OK');
 
     try {
-        const body = req.body;
-
-        // Extract citizen phone
-        const chatId = body?.senderData?.chatId;
-
-        // Ignore message if sender is self (prevent infinite loops)
-        if (body?.senderData?.sender === body?.instanceData?.wid || !chatId) {
-            return;
-        }
-
-        const typeMessage = body?.messageData?.typeMessage;
+        // Robust extraction for typeMessage
+        const messageData = body?.messageData || body || {};
+        const typeMessage = messageData?.typeMessage || 'unknown';
+        
         let text = '';
         let imageUrl = null;
         let latitude = null;
         let longitude = null;
 
-        if (typeMessage === 'imageMessage') {
-            imageUrl = body?.messageData?.fileMessageData?.downloadUrl || body?.messageData?.imageMessageData?.downloadUrl;
-            text = body?.messageData?.fileMessageData?.caption || body?.messageData?.imageMessageData?.caption || '';
+        if (typeMessage === 'imageMessage' || typeMessage === 'fileMessage' || typeMessage === 'documentMessage') {
+            const mediaData = messageData?.imageMessageData || messageData?.fileMessageData || messageData?.documentMessageData || {};
+            imageUrl = mediaData?.downloadUrl || null;
+            text = mediaData?.caption || '';
         } else if (typeMessage === 'textMessage') {
-            text = body?.messageData?.textMessageData?.textMessage || '';
+            text = messageData?.textMessageData?.textMessage || '';
         } else if (typeMessage === 'extendedTextMessage') {
-            text = body?.messageData?.extendedTextMessageData?.text || '';
+            text = messageData?.extendedTextMessageData?.text || '';
         } else if (typeMessage === 'locationMessage') {
-            latitude = body?.messageData?.locationMessageData?.latitude;
-            longitude = body?.messageData?.locationMessageData?.longitude;
+            latitude = messageData?.locationMessageData?.latitude;
+            longitude = messageData?.locationMessageData?.longitude;
         }
 
-        console.log(`[Green API Webhook] Received payload:`, { chatId, text, typeMessage });
+        console.log(`[Green API Webhook] Received payload:`, { chatId, text, typeMessage, imageUrl });
 
         // 2. Fetch Session from Database
         let sessionRes = await query('SELECT * FROM whatsapp_sessions WHERE phone_number = $1', [chatId]);
