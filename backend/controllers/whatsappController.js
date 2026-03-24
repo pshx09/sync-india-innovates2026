@@ -727,7 +727,13 @@ exports.receiveWebhook = async (req, res) => {
                         let base64Image = null;
 
                         try {
-                            base64Image = await downloadImageAsBase64(currentImageUrl);
+                            let base64Image = null;
+
+                            try {
+                                base64Image = await downloadMedia(currentImageUrl);
+                            } catch (err) {
+                                console.error("Base64 conversion failed:", err.message);
+                            }
                         } catch (err) {
                             console.error("Base64 conversion failed:", err.message);
                         }
