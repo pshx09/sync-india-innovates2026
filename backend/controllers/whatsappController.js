@@ -634,8 +634,14 @@ const ISSUE_TO_DEPARTMENT = {
 exports.receiveWebhook = async (req, res) => {
     // 1. TOP-LEVEL LOGGING (Before ANY logic)
     const body = req.body;
+
+    // 🚨 EMERGENCY SPAM FIX: Sirf incoming messages aage jayenge!
+    if (body?.typeWebhook !== 'incomingMessageReceived') {
+        return res.status(200).send('IGNORED_NON_INCOMING_EVENT');
+    }
+
     console.log("\n\n🚪 [FRONT-DOOR RAW PAYLOAD]:", JSON.stringify(body, null, 2));
-    
+
     // Robust extraction for ChatId and Sender Info (Green API sometimes varies structure)
     const senderData = body?.senderData || body?.messageData?.senderData || {};
     const instanceData = body?.instanceData || {};
@@ -649,7 +655,7 @@ exports.receiveWebhook = async (req, res) => {
     // 🚨 NEW FIX: Ignore Group Messages (@g.us) and Status Updates
     if (!chatId || (chatId && chatId.includes('@g.us')) || chatId === 'status@broadcast' || sender === wid) {
         console.log("[DEBUG] Webhook ignored based on EXIT CHECK conditions.");
-        return res.status(200).send('OK'); 
+        return res.status(200).send('OK');
     }
 
     // 3. IMMEDIATE ACKNOWLEDGMENT (Prevent retry loops)
@@ -659,7 +665,7 @@ exports.receiveWebhook = async (req, res) => {
         // Robust extraction for typeMessage
         const messageData = body?.messageData || body || {};
         const typeMessage = messageData?.typeMessage || 'unknown';
-        
+
         let text = '';
         let imageUrl = null;
         let latitude = null;
