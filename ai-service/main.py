@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -69,10 +69,33 @@ Return ONLY a raw JSON object with these keys:
 
 @app.post("/analyze", response_model=AIAnalysisResult)
 async def analyze_file(
-    file: UploadFile = File(...),
+    request: Request,
+    file: Optional[UploadFile] = File(None),
     description: str = Form(None),
     location_data: str = Form(None)
 ):
+    content_type = request.headers.get("content-type", "")
+
+    # Phase 8 FIX: Allow JSON payload containing image_base64 for Green API WhatsApp integration
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+            
+        base64_string = body.get("image_base64")
+        caption = body.get("caption", description)
+        
+        if not base64_string:
+            raise HTTPException(status_code=422, detail="Missing 'image_base64' in JSON payload")
+            
+        context = _build_context(caption, location_data)
+        return await request_llava(base64_string, context)
+
+    # Standard Phase 8 form-data fallback for website ticketController
+    if not file:
+        raise HTTPException(status_code=422, detail="Missing 'file' field in form data")
+
     contents = await file.read()
     context = _build_context(description, location_data)
     
