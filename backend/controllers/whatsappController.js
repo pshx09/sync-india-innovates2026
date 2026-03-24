@@ -206,27 +206,28 @@ const ISSUE_TO_DEPARTMENT = {
 exports.receiveWebhook = async (req, res) => {
     const body = req.body;
 
-    // 🚨 1. EMERGENCY SPAM FIX: Drop non-incoming messages immediately
+    // 🚨 1. SILENT REJECTION: Drop non-incoming messages immediately (No Logs)
     if (body?.typeWebhook !== 'incomingMessageReceived') {
         return res.status(200).send('IGNORED_NON_INCOMING_EVENT');
     }
 
-    console.log("\n\n🚪 [FRONT-DOOR RAW PAYLOAD]:", JSON.stringify(body, null, 2));
-
+    // Extract basic IDs first to check if it's a group
     const senderData = body?.senderData || body?.messageData?.senderData || {};
     const instanceData = body?.instanceData || {};
     const chatId = senderData?.chatId || body?.chatId || null;
     const sender = senderData?.sender || null;
     const wid = instanceData?.wid || null;
 
-    // 🚨 2. BLOCK GROUPS & STATUSES
+    // 🚨 2. SILENT GROUP BLOCKER: Ignore Groups & Statuses without cluttering logs
     if (!chatId || (chatId && chatId.includes('@g.us')) || chatId === 'status@broadcast' || sender === wid) {
-        console.log("[DEBUG] Webhook ignored based on EXIT CHECK conditions.");
-        return res.status(200).send('OK');
+        return res.status(200).send('OK'); // Chup-chap bahar nikal do, no logs!
     }
 
-    // 3. IMMEDIATE ACKNOWLEDGMENT
+    // 3. IMMEDIATE ACKNOWLEDGMENT (Tell Green API we got it)
     res.status(200).send('OK');
+
+    // 🎯 4. LOG ONLY VALID MESSAGES: Ab sirf personal chats ka payload print hoga!
+    console.log("\n\n🚪 [VALID PERSONAL MESSAGE RAW PAYLOAD]:", JSON.stringify(body, null, 2));
 
     try {
         const messageData = body?.messageData || body || {};
@@ -250,6 +251,7 @@ exports.receiveWebhook = async (req, res) => {
             latitude = messageData?.locationMessageData?.latitude;
             longitude = messageData?.locationMessageData?.longitude;
         }
+
 
         console.log(`[Green API Webhook] Received payload:`, { chatId, text, typeMessage, imageUrl });
 
