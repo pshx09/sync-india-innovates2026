@@ -1,5 +1,6 @@
 const { analyzeMedia, analyzeText } = require('../services/aiService');
 const axios = require('axios');
+const FormData = require('form-data');
 const { db } = require('../config/firebase');
 const { v4: uuidv4 } = require('uuid');
 
@@ -632,6 +633,16 @@ const ISSUE_TO_DEPARTMENT = {
 
 exports.receiveWebhook = async (req, res) => {
     // 1. IMMEDIATE ACKNOWLEDGMENT (Prevent retry loops)
+    // 1. DEFINE BODY FIRST!
+    const body = req.body;
+    const chatId = body?.senderData?.chatId;
+
+    // 🚨 NEW FIX: Ignore Group Messages (@g.us) and Status Updates
+    if (!chatId || chatId.includes('@g.us') || chatId === 'status@broadcast' || body?.senderData?.sender === body?.instanceData?.wid) {
+        return; // Chup-chap exit kar jao
+    }
+
+    // 2. IMMEDIATE ACKNOWLEDGMENT (Prevent retry loops)
     res.status(200).send('OK');
 
     try {
@@ -738,15 +749,22 @@ exports.receiveWebhook = async (req, res) => {
                             console.error("[Green API] Base64 conversion failed:", err.message);
                         }
 
+                        // 🔥 Convert base64 to Buffer and use FormData (Fixes 422 Error)
+                        const FormData = require('form-data');
+                        const form = new FormData();
+
+                        if (base64Image) {
+                            const imageBuffer = Buffer.from(base64Image, 'base64');
+                            form.append('file', imageBuffer, { filename: 'whatsapp_capture.jpg', contentType: 'image/jpeg' });
+                        }
+                        form.append('caption', text || "No description");
+
                         // 🔥 Send correct payload to AI
-                        const aiResponse = await require('axios').post(`${AI_SERVICE_URL}/analyze`, {
-                            image_base64: base64Image,
-                            caption: text || "No description"
-                        }, {
+                        const aiResponse = await require('axios').post(`${AI_SERVICE_URL}/analyze`, form, {
                             headers: {
+                                ...form.getHeaders(), // 🚨 CRITICAL: Sends as multipart/form-data
                                 'ngrok-skip-browser-warning': 'true',
-                                'User-Agent': 'NagarBackend/1.0',
-                                'Content-Type': 'application/json'
+                                'User-Agent': 'NagarBackend/1.0'
                             },
                             timeout: 60000
                         });
