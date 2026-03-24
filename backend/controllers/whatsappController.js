@@ -39,6 +39,19 @@ async function downloadMedia(url) {
     }
 }
 
+async function downloadImageAsBase64(url) {
+    try {
+        const response = await axios.get(url, {
+            responseType: 'arraybuffer',
+            timeout: 15000
+        });
+        return Buffer.from(response.data, 'binary').toString('base64');
+    } catch (err) {
+        console.error("Image download failed:", err.message);
+        return null;
+    }
+}
+
 // Helper: Send WhatsApp Message
 const sendMessage = async (to, message) => {
     try {
@@ -710,15 +723,26 @@ exports.receiveWebhook = async (req, res) => {
                     try {
                         console.log(`[Green API] AI Forensics attempt ${attempt}/${MAX_RETRIES} → ${AI_SERVICE_URL}/analyze`);
 
+                        // 🔥 Convert image → base64
+                        let base64Image = null;
+
+                        try {
+                            base64Image = await downloadImageAsBase64(currentImageUrl);
+                        } catch (err) {
+                            console.error("Base64 conversion failed:", err.message);
+                        }
+
+                        // 🔥 Send correct payload to AI
                         const aiResponse = await require('axios').post(`${AI_SERVICE_URL}/analyze`, {
-                            image_url: currentImageUrl
+                            image_base64: base64Image,
+                            caption: text || "No description"
                         }, {
                             headers: {
                                 'ngrok-skip-browser-warning': 'true',
                                 'User-Agent': 'NagarBackend/1.0',
                                 'Content-Type': 'application/json'
                             },
-                            timeout: 60000 // 60s — LLaVA on local hardware is slow
+                            timeout: 60000
                         });
 
                         aiResult = aiResponse.data;
@@ -730,8 +754,9 @@ exports.receiveWebhook = async (req, res) => {
                         const status = aiError.response?.status;
                         const isRetryable = !status || status >= 500 || aiError.code === 'ECONNREFUSED' || aiError.code === 'ECONNABORTED' || aiError.code === 'ETIMEDOUT';
 
-                        console.error(`[Green API] AI attempt ${attempt} failed: ${aiError.message} (status=${status || 'N/A'}, retryable=${isRetryable})`);
+                        console.error("[Green API] AI ERROR FULL:", aiError.response?.data || aiError.message);
 
+                        console.error(`[Green API] AI attempt ${attempt} failed (status=${status || 'N/A'}, retryable=${isRetryable})`);
                         if (!isRetryable) {
                             console.error("[Green API] Non-retryable AI error. Skipping further attempts.");
                             break;
