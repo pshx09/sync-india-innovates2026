@@ -597,6 +597,26 @@ exports.broadcastTargetedAlert = async (targetLocation, message, simulatedReceiv
 const { sendWhatsAppMessage, sendWhatsAppAudio } = require('../services/whatsappService');
 const { query } = require('../config/db');
 
+// ==========================================
+// SMART DISPATCH: issue_type → Department
+// Shared constant matching ticketController.js
+// ==========================================
+const ISSUE_TO_DEPARTMENT = {
+    'fire': 'Fire & Safety', 'gas_leak': 'Fire & Safety', 'explosion': 'Fire & Safety', 'building_collapse': 'Fire & Safety',
+    'garbage': 'Municipal/Waste', 'overflowing_bin': 'Municipal/Waste', 'illegal_dumping': 'Municipal/Waste',
+    'stray_animal': 'Municipal/Waste', 'dead_animal': 'Municipal/Waste', 'broken_streetlight': 'Municipal/Waste',
+    'open_manhole': 'Municipal/Waste', 'sewage': 'Municipal/Waste', 'drainage': 'Municipal/Waste',
+    'pothole': 'Public Works', 'road_damage': 'Public Works', 'broken_road': 'Public Works',
+    'road_blockage': 'Public Works', 'fallen_tree': 'Public Works', 'water_leak': 'Public Works',
+    'flood': 'Public Works', 'waterlogging': 'Public Works', 'electrical_hazard': 'Public Works',
+    'power_outage': 'Public Works', 'fallen_wire': 'Public Works', 'transformer': 'Public Works',
+    'broken_infrastructure': 'Public Works',
+    'traffic_violation': 'Traffic', 'signal_fault': 'Traffic', 'accident': 'Traffic',
+    'crime': 'Police', 'theft': 'Police', 'vandalism': 'Police', 'suspicious_activity': 'Police',
+    'medical_emergency': 'Municipal/Waste', 'injury': 'Municipal/Waste',
+    'none': 'Municipal/Waste',
+};
+
 exports.receiveWebhook = async (req, res) => {
     // 1. IMMEDIATE ACKNOWLEDGMENT (Prevent retry loops)
     res.status(200).send('OK');
@@ -661,98 +681,221 @@ exports.receiveWebhook = async (req, res) => {
             await sendWhatsAppMessage(chatId, "Namaste! Nagar Alert Hub mein aapka swagat hai. 🏛️\n\nKripiya samasya ki photo/video/audio aur apni WhatsApp Location ek sath bhejein. 📍📸");
             await query("UPDATE whatsapp_sessions SET current_step = 'AWAITING_ISSUE', updated_at = CURRENT_TIMESTAMP WHERE phone_number = $1", [chatId]);
         }
+        // ==========================================
+        // AWAITING_ISSUE: AI Analysis with Retry + Gating
+        // ==========================================
         else if (step === 'AWAITING_ISSUE') {
-            // Task 1: AI Call & Request Location
             const currentImageUrl = req.body.messageData?.fileMessageData?.downloadUrl || imageUrl;
 
             if (!currentImageUrl) {
-                console.error('Image URL not found in payload');
+                console.error('[Green API] Image URL not found in payload');
                 await sendWhatsAppMessage(chatId, "⚠️ Please send a clear photo of the incident first. We cannot proceed without an image.");
                 return;
             }
 
+            await sendWhatsAppMessage(chatId, "🔍 *Analyzing your image with AI Forensics...*");
+
+            // ====== AI SERVICE CALL WITH RETRY + EXPONENTIAL BACKOFF ======
+            const AI_SERVICE_URL = process.env.AI_SERVICE_URL;
+            const MAX_RETRIES = 3;
+            const BASE_DELAY_MS = 1000; // 1s → 2s → 4s
+
             let aiResult = null;
-            try {
-                const aiUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-                const aiResponse = await require('axios').post(`${aiUrl}/analyze`, { image_url: currentImageUrl });
-                aiResult = aiResponse.data;
-            } catch (aiErr) {
-                console.error("[Green API] AI Service Error:", aiErr.message);
-                aiResult = { category: "Uncategorized (AI Error)", severity: "Moderate", description: text || "Image submitted without AI description" };
+            let aiReachable = false;
+
+            if (!AI_SERVICE_URL) {
+                console.warn("[Green API] ⚠️ AI_SERVICE_URL is not set. Skipping AI verification.");
+            } else {
+                for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+                    try {
+                        console.log(`[Green API] AI Forensics attempt ${attempt}/${MAX_RETRIES} → ${AI_SERVICE_URL}/analyze`);
+
+                        const aiResponse = await require('axios').post(`${AI_SERVICE_URL}/analyze`, {
+                            image_url: currentImageUrl
+                        }, {
+                            headers: {
+                                'ngrok-skip-browser-warning': 'true',
+                                'User-Agent': 'NagarBackend/1.0',
+                                'Content-Type': 'application/json'
+                            },
+                            timeout: 60000 // 60s — LLaVA on local hardware is slow
+                        });
+
+                        aiResult = aiResponse.data;
+                        aiReachable = true;
+                        console.log("[Green API] ✅ AI Forensics result:", JSON.stringify(aiResult, null, 2));
+                        break; // Success — exit retry loop
+
+                    } catch (aiError) {
+                        const status = aiError.response?.status;
+                        const isRetryable = !status || status >= 500 || aiError.code === 'ECONNREFUSED' || aiError.code === 'ECONNABORTED' || aiError.code === 'ETIMEDOUT';
+
+                        console.error(`[Green API] AI attempt ${attempt} failed: ${aiError.message} (status=${status || 'N/A'}, retryable=${isRetryable})`);
+
+                        if (!isRetryable) {
+                            console.error("[Green API] Non-retryable AI error. Skipping further attempts.");
+                            break;
+                        }
+
+                        if (attempt < MAX_RETRIES) {
+                            const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+                            console.log(`[Green API] Retrying in ${delay}ms...`);
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                        }
+                    }
+                }
             }
 
-            const tempData = JSON.stringify({ imageUrl: currentImageUrl, caption: text, aiResult });
+            // ====== STRICT AI GATING ======
+
+            // Gate 1: AI reachable — check for fake/watermarked media
+            if (aiReachable && aiResult && aiResult.is_fake_or_watermarked) {
+                console.log("[Green API] ❌ REJECTED — AI detected fake/watermarked media.");
+                await sendWhatsAppAudio(chatId, 'report_rejected.mp3');
+                await sendWhatsAppMessage(chatId, "❌ This image appears to be from the internet, AI-generated, or edited. Please send an *original, unedited photo* taken by you.");
+                await query("UPDATE whatsapp_sessions SET current_step = 'NEW', temp_data = '{}', updated_at = CURRENT_TIMESTAMP WHERE phone_number = $1", [chatId]);
+                return;
+            }
+
+            // Gate 2: AI reachable — check for valid civic issue
+            if (aiReachable && aiResult && !aiResult.is_valid_civic_issue) {
+                console.log("[Green API] ❌ REJECTED — AI did not detect a valid civic issue.");
+                await sendWhatsAppAudio(chatId, 'report_rejected.mp3');
+                await sendWhatsAppMessage(chatId, "❌ We couldn't clearly detect a civic issue in this image. Please click a clearer photo of the problem and try again.");
+                await query("UPDATE whatsapp_sessions SET current_step = 'NEW', temp_data = '{}', updated_at = CURRENT_TIMESTAMP WHERE phone_number = $1", [chatId]);
+                return;
+            }
+
+            // Gate 3: Circuit Breaker — AI unreachable after all retries
+            let sessionAiData;
+            if (!aiReachable || !aiResult) {
+                console.warn("[Green API] 🔶 CIRCUIT BREAKER TRIPPED — AI Service unreachable. Accepting for manual review.");
+                sessionAiData = {
+                    imageUrl: currentImageUrl,
+                    caption: text,
+                    aiStatus: 'pending_manual_verification',
+                    aiResult: {
+                        issue_type: 'pending_review',
+                        severity: 'Medium',
+                        ai_summary: 'AI Service was unreachable. Pending manual verification.',
+                        confidence: 0,
+                        is_valid_civic_issue: true // Allow through for manual review
+                    }
+                };
+                await sendWhatsAppMessage(chatId, "⚠️ AI verification is temporarily slow. Your report has been accepted for manual review. Please send your location now. 📍");
+            } else {
+                // AI succeeded and passed all gates — store full result
+                console.log(`[Green API] ✅ AI VERIFIED — Issue: ${aiResult.issue_type}, Severity: ${aiResult.severity}`);
+                sessionAiData = {
+                    imageUrl: currentImageUrl,
+                    caption: text,
+                    aiStatus: 'verified',
+                    aiResult: {
+                        issue_type: aiResult.issue_type || 'General',
+                        severity: aiResult.severity || 'Medium',
+                        ai_summary: aiResult.ai_summary || 'Civic issue detected by AI.',
+                        confidence: aiResult.confidence || 0.8,
+                        is_valid_civic_issue: true
+                    }
+                };
+                await sendWhatsAppMessage(chatId, `✅ *AI Analysis Complete!*\n\n📋 Issue: *${aiResult.issue_type || 'Civic Issue'}*\n⚠️ Severity: *${aiResult.severity || 'Medium'}*\n\nPlease share your 📍 *WhatsApp Location* now to file the report.`);
+            }
+
+            // Persist full AI data in session for the AWAITING_LOCATION step
+            const tempData = JSON.stringify(sessionAiData);
             await query("UPDATE whatsapp_sessions SET current_step = 'AWAITING_LOCATION', temp_data = $1, updated_at = CURRENT_TIMESTAMP WHERE phone_number = $2", [tempData, chatId]);
 
             await sendWhatsAppAudio(chatId, 'ask_location_hi.mp3');
-            await sendWhatsAppMessage(chatId, "Kripiya apni WhatsApp Live/Current Location bhejein taaki hum aage badh sakein. 📍");
         }
+        // ==========================================
+        // AWAITING_LOCATION: DB Insert + Smart Dispatch
+        // ==========================================
         else if (step === 'AWAITING_LOCATION') {
-            // Task 2: Validate location & Auto-Register & Ticket Creation
             if (latitude && longitude) {
                 const phone = chatId.split('@')[0];
                 const senderName = body?.senderData?.senderName || 'Citizen';
                 const tempData = typeof session.temp_data === 'string' ? JSON.parse(session.temp_data) : (session.temp_data || {});
                 const storedImageUrl = tempData.imageUrl || '';
                 const aiResult = tempData.aiResult || {};
-                const category = aiResult.category || 'General';
-                const description = aiResult.description || 'Civic Issue Reported via WhatsApp';
+                const aiStatus = tempData.aiStatus || 'verified';
 
-                // Step A: Auto-Register / Lookup User (No ON CONFLICT)
-                let userId;
-                const existingUser = await query('SELECT id FROM users WHERE phone = $1', [phone]);
+                // ====== Smart Dispatch: AI issue_type → Department ======
+                const issueType = aiResult.issue_type || 'General';
+                const autoAssignedDept = ISSUE_TO_DEPARTMENT[issueType.toLowerCase()] || 'Municipal/Waste';
+                console.log(`[Green API] Smart Dispatch: issue_type="${issueType}" → department="${autoAssignedDept}"`);
 
-                if (existingUser.rows.length > 0) {
-                    userId = existingUser.rows[0].id;
-                } else {
-                    const insertRes = await query(`
-                        INSERT INTO users (name, phone, role) 
-                        VALUES ($1, $2, 'citizen') 
-                        RETURNING id;
-                    `, [senderName, phone]);
-                    userId = insertRes.rows[0].id;
+                // AI description (use AI summary, fallback to caption/generic)
+                const smartDescription = aiResult.ai_summary || tempData.caption || 'Civic Issue Reported via WhatsApp';
+
+                // Convert AI float confidence (0.0–1.0) to integer percentage (0–100)
+                const rawConf = parseFloat(aiResult.confidence);
+                const confidenceInt = (!isNaN(rawConf) && rawConf <= 1) ? Math.round(rawConf * 100) : Math.round(rawConf || 0);
+
+                // Determine final ticket status
+                const ticketStatus = aiStatus === 'pending_manual_verification' ? 'pending_manual_verification' : 'Pending';
+
+                // ====== Auto-Register / Lookup User ======
+                let userId = null; // Default NULL — safe for FK constraint
+                try {
+                    const existingUser = await query('SELECT id FROM users WHERE phone = $1', [phone]);
+                    if (existingUser.rows.length > 0) {
+                        userId = existingUser.rows[0].id;
+                    } else {
+                        const insertRes = await query(
+                            "INSERT INTO users (name, phone, role) VALUES ($1, $2, 'citizen') RETURNING id;",
+                            [senderName, phone]
+                        );
+                        userId = insertRes.rows[0].id;
+                    }
+                } catch (userErr) {
+                    console.error("[Green API] User registration failed, proceeding with user_id=NULL:", userErr.message);
+                    // userId remains null — ticket will still be created with user_phone
                 }
 
-                // Step B: Create the Ticket
-                // Step B: Create the Ticket (FIXED VERSION)
+                // ====== Complete DB INSERT (matches ticketController schema) ======
+                // CRITICAL: ST_MakePoint takes (longitude, latitude) — NOT (lat, lng)
                 const ticketRes = await query(`
-    INSERT INTO tickets (
-        user_phone,
-        issue_type,
-        severity,
-        image_url,
-        description,
-        location,
-        location_lat,
-        location_lng,
-        status
-    ) 
-    VALUES (
-        $1, 
-        $2, 
-        $3, 
-        $4, 
-        $5,
-        ST_SetSRID(ST_MakePoint($6, $7), 4326),
-        $7,
-        $6,
-        'Pending'
-    )
-    RETURNING id;
-`, [
-                    phone,
-                    category || 'General',
-                    aiResult.severity || 'Medium',
-                    storedImageUrl,
-                    description,
-                    longitude,   // ⚠️ important: lng first
-                    latitude]);
-                const ticketId = ticketRes.rows[0].id;
+                    INSERT INTO tickets (
+                        user_id, user_phone, issue_type, severity, image_url,
+                        location, description, department,
+                        ai_summary, ai_confidence, status
+                    )
+                    VALUES (
+                        $1, $2, $3, $4, $5,
+                        ST_SetSRID(ST_MakePoint($6, $7), 4326),
+                        $8, $9, $10, $11, $12
+                    )
+                    RETURNING id, issue_type, severity, department;
+                `, [
+                    userId,                          // $1  user_id (UUID or NULL)
+                    phone,                           // $2  user_phone
+                    issueType,                       // $3  issue_type
+                    aiResult.severity || 'Medium',   // $4  severity
+                    storedImageUrl,                   // $5  image_url
+                    longitude,                        // $6  ST_MakePoint(lng, lat) — lng FIRST
+                    latitude,                         // $7  ST_MakePoint(lng, lat) — lat SECOND
+                    smartDescription,                 // $8  description
+                    autoAssignedDept,                 // $9  department
+                    aiResult.ai_summary || 'No AI summary', // $10 ai_summary
+                    confidenceInt,                    // $11 ai_confidence (integer 0-100)
+                    ticketStatus                      // $12 status
+                ]);
 
-                // Step C: Cleanup & Notify
+                const ticket = ticketRes.rows[0];
+                const ticketId = ticket.id;
+
+                console.log(`[Green API] ✅ Ticket #${ticketId} created | type=${ticket.issue_type} | severity=${ticket.severity} | dept=${ticket.department} | status=${ticketStatus}`);
+
+                // ====== Cleanup Session ======
                 await query("DELETE FROM whatsapp_sessions WHERE phone_number = $1", [chatId]);
+
+                // ====== Dynamic Success Feedback ======
                 await sendWhatsAppAudio(chatId, 'report_accepted.mp3');
-                await sendWhatsAppMessage(chatId, "✅ Aapki shikayat darj ho gayi hai. Ticket ID: #" + ticketId + ". Jaldi update diya jayega.");
+                await sendWhatsAppMessage(chatId,
+                    `✅ *Issue Verified!* AI detected: *${ticket.issue_type}* (Severity: *${ticket.severity}*).\n\n` +
+                    `Your ticket *#${ticketId}* has been forwarded to the *${ticket.department}* department.\n\n` +
+                    `📊 Track status on the Nagar Alert Dashboard.`
+                );
             } else {
                 await sendWhatsAppMessage(chatId, "📍 Please use WhatsApp's *Location Attachment* feature to pin the exact location.");
             }
