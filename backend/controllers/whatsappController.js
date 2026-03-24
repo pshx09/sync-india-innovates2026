@@ -652,8 +652,8 @@ exports.receiveWebhook = async (req, res) => {
         let longitude = null;
 
         if (typeMessage === 'imageMessage') {
-            imageUrl = body?.messageData?.fileMessageData?.downloadUrl;
-            text = body?.messageData?.fileMessageData?.caption || '';
+            imageUrl = body?.messageData?.fileMessageData?.downloadUrl || body?.messageData?.imageMessageData?.downloadUrl;
+            text = body?.messageData?.fileMessageData?.caption || body?.messageData?.imageMessageData?.caption || '';
         } else if (typeMessage === 'textMessage') {
             text = body?.messageData?.textMessageData?.textMessage || '';
         } else if (typeMessage === 'extendedTextMessage') {
@@ -698,7 +698,12 @@ exports.receiveWebhook = async (req, res) => {
         // AWAITING_ISSUE: AI Analysis with Retry + Gating
         // ==========================================
         else if (step === 'AWAITING_ISSUE') {
-            const currentImageUrl = req.body.messageData?.fileMessageData?.downloadUrl || imageUrl;
+            const currentImageUrl =
+                req.body.messageData?.imageMessageData?.downloadUrl ||
+                req.body.messageData?.fileMessageData?.downloadUrl ||
+                imageUrl;
+
+            console.log("[Green API] FINAL IMAGE URL:", currentImageUrl);
 
             if (!currentImageUrl) {
                 console.error('[Green API] Image URL not found in payload');
@@ -727,15 +732,10 @@ exports.receiveWebhook = async (req, res) => {
                         let base64Image = null;
 
                         try {
-                            let base64Image = null;
-
-                            try {
-                                base64Image = await downloadMedia(currentImageUrl);
-                            } catch (err) {
-                                console.error("Base64 conversion failed:", err.message);
-                            }
+                            base64Image = await downloadMedia(currentImageUrl);
+                            console.log("[Green API] BASE64 LENGTH:", base64Image?.length || 0);
                         } catch (err) {
-                            console.error("Base64 conversion failed:", err.message);
+                            console.error("[Green API] Base64 conversion failed:", err.message);
                         }
 
                         // 🔥 Send correct payload to AI
