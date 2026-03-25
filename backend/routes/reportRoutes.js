@@ -3,6 +3,7 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 console.log("✅ [DEBUG] reportRoutes.js LOADED");
 
+
 // 🚀 FIX 1: Removed sendBroadcast, Added createBroadcast
 const {
     verifyReportImage,
@@ -13,7 +14,8 @@ const {
     getDepartmentReports,
     getAllReports,
     updateReportStatus,
-    createBroadcast,
+    createBroadcast,   // ✅ Yeh wahi hai jo humne pehle theek kiya tha
+    getBroadcasts,     // ✅ Yeh NAYI line add kar crash rokne ke liye
     getNearbyReports,
     detectLocationFromText,
     getAdminStats
@@ -40,6 +42,11 @@ router.get('/test', (req, res) => {
     res.json({ message: "Reports Route Working" });
 });
 
+// ... baaki routes ...
+
+router.post('/broadcast', createBroadcast); // ✅ Broadcast bhejne ke liye
+router.get('/broadcasts', getBroadcasts);   // ✅ Crash rokne ke liye (get history)
+
 router.post('/verify-image', verifyReportImage);
 router.post('/detect-location', detectLocationFromText);
 router.post('/create', createReport);
@@ -47,6 +54,11 @@ router.post('/update-status', optionalAuth, updateReportStatus);
 
 // 🚀 FIX 2: Directly calling createBroadcast without "reportController."
 router.post('/broadcast', createBroadcast);
+
+// 🚨 YEH LINE SABSE NEECHE HONI CHAHIYE 🚨
+router.get('/:id', getSingleReport);
+
+module.exports = router;
 
 // Citizen authenticated routes
 router.get('/dashboard-stats', authenticateToken, getDashboardStats);

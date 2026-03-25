@@ -840,3 +840,80 @@ exports.getNearbyReports = async (req, res) => {
         res.status(500).json({ error: "Geo Calculation Failed", details: error.message });
     }
 };
+
+const { sendWhatsAppMessage } = require('../services/whatsappService');
+
+// 1️⃣ Naya function jo crash rokega
+exports.getBroadcasts = async (req, res) => {
+    try {
+        // Abhi ke liye empty history return kar rahe hain taaki page crash na ho
+        res.status(200).json({ broadcasts: [] });
+    } catch (error) {
+        res.status(500).json({ error: "Failed to fetch broadcasts" });
+    }
+};
+
+// 2️⃣ Updated createBroadcast function
+exports.createBroadcast = async (req, res) => {
+    try {
+        // Frontend shayad inme se kisi bhi naam se ID bheje
+        const incidentId = req.body.incidentId || req.body.reportId || req.body.id;
+        const { message, status, type, area } = req.body;
+
+        // 🟢 TYPE A: 1-on-1 SPECIFIC USER BROADCAST
+        if (incidentId && message) {
+            const ticketRes = await pgDb.query('SELECT * FROM tickets WHERE id = $1', [incidentId]);
+            const ticket = ticketRes.rows[0];
+
+            if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+
+            const newStatus = status || 'In Progress';
+
+            // Website Dashboard Status Update
+            await pgDb.query('UPDATE tickets SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [newStatus, incidentId]);
+
+            // WhatsApp Message
+            if (ticket.user_phone) {
+                const waMessage = `📢 *Update on your Report #${ticket.id.toString().slice(-6)}*\n\n` +
+                    `📋 *Issue:* ${ticket.issue_type}\n` +
+                    `🔄 *Status:* ${newStatus}\n\n` +
+                    `👨‍💼 *Message from Department:*\n"${message}"\n\n` +
+                    `*Please take necessary precautions.* Our team is actively monitoring the situation. 🏛️`;
+
+                const formattedPhone = ticket.user_phone.includes('@c.us') ? ticket.user_phone : `91${ticket.user_phone.replace(/\D/g, '').slice(-10)}@c.us`;
+                await sendWhatsAppMessage(formattedPhone, waMessage);
+            }
+
+            return res.status(200).json({ success: true, message: "Sent 1-on-1 message!" });
+        }
+
+        // 🟢 TYPE B: GENERAL AREA BROADCAST (Agar Frontend ne ID nahi bheji)
+        else if (area && message) {
+            // Us area ke sabhi pending tickets nikalenge aur sabko alert bhejenge!
+            let queryStr = `SELECT DISTINCT user_phone FROM tickets WHERE status != 'Resolved' AND user_phone IS NOT NULL`;
+            let values = [];
+
+            if (area !== 'All' && area !== 'Citywide') {
+                queryStr += ` AND (description ILIKE $1 OR department ILIKE $1)`;
+                values.push(`%${area}%`);
+            }
+
+            const targetUsers = await pgDb.query(queryStr, values);
+            const waMessage = `📢 *${(type || 'AREA ALERT').toUpperCase()}*\n📍 Area: ${area}\n\n👨‍💼 *Update:*\n"${message}"\n\nStay safe! 🏛️`;
+
+            let count = 0;
+            for (let row of targetUsers.rows) {
+                const phone = row.user_phone.includes('@c.us') ? row.user_phone : `91${row.user_phone.replace(/\D/g, '').slice(-10)}@c.us`;
+                await sendWhatsAppMessage(phone, waMessage);
+                count++;
+            }
+
+            return res.status(200).json({ success: true, message: `Area broadcast sent to ${count} users!` });
+        }
+
+        return res.status(400).json({ error: "Missing parameters." });
+
+    } catch (error) {
+        res.status(500).json({ error: "Failed to process broadcast" });
+    }
+};
