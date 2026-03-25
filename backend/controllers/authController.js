@@ -12,27 +12,28 @@ const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString()
 // NodeMailer Transporter — initialized lazily to ensure .env is loaded
 // NodeMailer Transporter — initialized lazily to ensure .env is loaded
 // NodeMailer Transporter — initialized lazily to ensure .env is loaded
+// NodeMailer Transporter — initialized lazily to ensure .env is loaded
 let _transporter = null;
 function getTransporter() {
     if (!_transporter) {
         console.log("[Nodemailer] Creating transporter with user:", process.env.EMAIL_USER);
         _transporter = nodemailer.createTransport({
             host: 'smtp.gmail.com',
-            port: 587, // 🚨 CRITICAL CHANGE: Changed from 465 to 587
-            secure: false, // 🚨 CRITICAL CHANGE: Must be false for port 587 (It uses STARTTLS automatically)
+            port: 465, // Wapas 465 (Secure) par aayenge
+            secure: true,
             auth: {
                 user: process.env.EMAIL_USER,
                 pass: process.env.EMAIL_PASS
             },
+            pool: true, // 🚨 CRITICAL: Yeh connection ko baar-baar break aur banne se rokta hai
             tls: {
                 rejectUnauthorized: false
             },
-            // 🐛 DEBUG MODE ON: Yeh exact batayega ki mail kahan atak raha hai
             debug: true,
             logger: true,
-            connectionTimeout: 10000,
-            greetingTimeout: 10000,
-            socketTimeout: 15000
+            connectionTimeout: 30000, // 🚨 CRITICAL: 10s se badhakar 30 seconds kar diya
+            greetingTimeout: 30000,
+            socketTimeout: 40000
         });
     }
     return _transporter;
