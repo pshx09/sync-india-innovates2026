@@ -11,21 +11,25 @@ const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString()
 
 // NodeMailer Transporter — initialized lazily to ensure .env is loaded
 // NodeMailer Transporter — initialized lazily to ensure .env is loaded
+// NodeMailer Transporter — initialized lazily to ensure .env is loaded
 let _transporter = null;
 function getTransporter() {
     if (!_transporter) {
         console.log("[Nodemailer] Creating transporter with user:", process.env.EMAIL_USER);
         _transporter = nodemailer.createTransport({
             host: 'smtp.gmail.com',
-            port: 465,
-            secure: true, // true for port 465 (SSL)
+            port: 587, // 🚨 CRITICAL CHANGE: Changed from 465 to 587
+            secure: false, // 🚨 CRITICAL CHANGE: Must be false for port 587 (It uses STARTTLS automatically)
             auth: {
                 user: process.env.EMAIL_USER,
                 pass: process.env.EMAIL_PASS
             },
             tls: {
-                rejectUnauthorized: false // Bypass SSL verification issues on cloud servers
+                rejectUnauthorized: false
             },
+            // 🐛 DEBUG MODE ON: Yeh exact batayega ki mail kahan atak raha hai
+            debug: true,
+            logger: true,
             connectionTimeout: 10000,
             greetingTimeout: 10000,
             socketTimeout: 15000
@@ -33,7 +37,6 @@ function getTransporter() {
     }
     return _transporter;
 }
-
 // ============================================================
 // 1. SIGNUP REQUEST: Save details in memory + Send OTP via email
 // ============================================================
