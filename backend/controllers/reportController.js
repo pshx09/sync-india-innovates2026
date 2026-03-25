@@ -841,7 +841,7 @@ exports.getNearbyReports = async (req, res) => {
     }
 };
 
-const { sendWhatsAppMessage } = require('../services/whatsappService');
+// const { sendWhatsAppMessage } = require('../services/whatsappService');
 
 // 1️⃣ Naya function jo crash rokega
 exports.getBroadcasts = async (req, res) => {
