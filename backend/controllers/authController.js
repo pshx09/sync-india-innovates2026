@@ -1,6 +1,5 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const nodemailer = require('nodemailer');
 const db = require('../config/db');
 
 // In-memory store for pending signups (Email -> { formData, otp, expiresAt })
@@ -9,35 +8,32 @@ const otpStore = new Map();
 // Helper: Generate 6-digit OTP
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
-// NodeMailer Transporter — initialized lazily to ensure .env is loaded
-// NodeMailer Transporter — initialized lazily to ensure .env is loaded
-// NodeMailer Transporter — initialized lazily to ensure .env is loaded
-// NodeMailer Transporter — initialized lazily to ensure .env is loaded
-let _transporter = null;
-function getTransporter() {
-    if (!_transporter) {
-        console.log("[Nodemailer] Creating transporter with user:", process.env.EMAIL_USER);
-        _transporter = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
-            port: 465, // Wapas 465 (Secure) par aayenge
-            secure: true,
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS
-            },
-            pool: true, // 🚨 CRITICAL: Yeh connection ko baar-baar break aur banne se rokta hai
-            tls: {
-                rejectUnauthorized: false
-            },
-            debug: true,
-            logger: true,
-            connectionTimeout: 30000, // 🚨 CRITICAL: 10s se badhakar 30 seconds kar diya
-            greetingTimeout: 30000,
-            socketTimeout: 40000
-        });
+// ============================================================
+// 🚀 THE FIREWALL BYPASSER (Brevo HTTP API) - Replaced Nodemailer
+// ============================================================
+const sendEmailHTTP = async (toEmail, subject, textContent) => {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+            'accept': 'application/json',
+            'api-key': process.env.BREVO_API_KEY,
+            'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+            sender: { name: "Nagar Alert Hub", email: process.env.EMAIL_USER },
+            to: [{ email: toEmail }],
+            subject: subject,
+            textContent: textContent
+        })
+    });
+
+    if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(`Brevo API Error: ${JSON.stringify(errData)}`);
     }
-    return _transporter;
-}
+    return await response.json();
+};
+
 // ============================================================
 // 1. SIGNUP REQUEST: Save details in memory + Send OTP via email
 // ============================================================
@@ -73,23 +69,20 @@ exports.signupRequest = async (req, res) => {
             expiresAt
         });
 
-        console.log("📧 Attempting to send OTP to:", email);
+        console.log("📧 Attempting to send OTP via Brevo to:", email);
         console.log("🔑 Generated OTP:", otp);
 
-        const mailOptions = {
-            from: `"Nagar Alert Hub" <${process.env.EMAIL_USER}>`,
-            to: email,
-            subject: 'Verify your Nagar Alert Hub Account',
-            text: `Your verification code is: ${otp}. It expires in 10 minutes. Welcome to Nagar Alert Hub!`
-        };
-
         try {
-            const transporter = getTransporter();
-            await transporter.sendMail(mailOptions);
+            // 🚀 Call the new HTTP API instead of Nodemailer
+            await sendEmailHTTP(
+                email,
+                'Verify your Nagar Alert Hub Account',
+                `Your verification code is: ${otp}. It expires in 10 minutes. Welcome to Nagar Alert Hub!`
+            );
             console.log("✅ OTP email sent successfully to:", email);
             return res.status(200).json({ message: "OTP sent to your email.", email });
         } catch (mailError) {
-            console.error("❌ Nodemailer Error:", mailError.message);
+            console.error("❌ Email API Error:", mailError.message);
             // STILL return 200 — OTP is stored in memory, user can see it in console for dev
             return res.status(200).json({
                 message: "OTP generated (email delivery may have failed — check server console for OTP).",
@@ -226,13 +219,12 @@ exports.resendOTP = async (req, res) => {
             console.log("🔑 Resend OTP (signup):", newOtp, "for:", email);
 
             try {
-                const transporter = getTransporter();
-                await transporter.sendMail({
-                    from: `"Nagar Alert Hub" <${process.env.EMAIL_USER}>`,
-                    to: email,
-                    subject: 'New Verification Code - Nagar Alert Hub',
-                    text: `Your new verification code is: ${newOtp}. It expires in 10 minutes.`
-                });
+                // 🚀 Call the new HTTP API
+                await sendEmailHTTP(
+                    email,
+                    'New Verification Code - Nagar Alert Hub',
+                    `Your new verification code is: ${newOtp}. It expires in 10 minutes.`
+                );
                 return res.status(200).json({ message: "New OTP sent." });
             } catch (mailError) {
                 console.error("❌ Resend mail error:", mailError.message);
@@ -251,13 +243,12 @@ exports.resendOTP = async (req, res) => {
         console.log("🔑 Resend OTP (login):", newOtp, "for:", email);
 
         try {
-            const transporter = getTransporter();
-            await transporter.sendMail({
-                from: `"Nagar Alert Hub" <${process.env.EMAIL_USER}>`,
-                to: email,
-                subject: 'New Verification Code - Nagar Alert Hub',
-                text: `Your new verification code is: ${newOtp}. It expires in 10 minutes.`
-            });
+            // 🚀 Call the new HTTP API
+            await sendEmailHTTP(
+                email,
+                'New Verification Code - Nagar Alert Hub',
+                `Your new verification code is: ${newOtp}. It expires in 10 minutes.`
+            );
             return res.status(200).json({ message: "New OTP sent." });
         } catch (mailError) {
             console.error("❌ Resend mail error:", mailError.message);
