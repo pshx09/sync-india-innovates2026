@@ -239,10 +239,24 @@ exports.receiveWebhook = async (req, res) => {
         let longitude = null;
 
         // Robust media extraction
-        if (typeMessage === 'imageMessage' || typeMessage === 'fileMessage' || typeMessage === 'documentMessage') {
-            const mediaData = messageData?.imageMessageData || messageData?.fileMessageData || messageData?.documentMessageData || {};
+        // 🚀 Robust media extraction (UPDATED FOR VIDEO & AUDIO)
+        if (
+            typeMessage === 'imageMessage' ||
+            typeMessage === 'videoMessage' ||
+            typeMessage === 'audioMessage' ||
+            typeMessage === 'fileMessage' ||
+            typeMessage === 'documentMessage'
+        ) {
+            // Green API puts video/audio URLs inside fileMessageData sometimes, or their respective keys
+            const mediaData = messageData?.imageMessageData ||
+                messageData?.videoMessageData ||
+                messageData?.audioMessageData ||
+                messageData?.fileMessageData ||
+                messageData?.documentMessageData || {};
+
             imageUrl = mediaData?.downloadUrl || null;
             text = mediaData?.caption || '';
+
         } else if (typeMessage === 'textMessage') {
             text = messageData?.textMessageData?.textMessage || '';
         } else if (typeMessage === 'extendedTextMessage') {
@@ -251,7 +265,6 @@ exports.receiveWebhook = async (req, res) => {
             latitude = messageData?.locationMessageData?.latitude;
             longitude = messageData?.locationMessageData?.longitude;
         }
-
 
         console.log(`[Green API Webhook] Received payload:`, { chatId, text, typeMessage, imageUrl });
 
