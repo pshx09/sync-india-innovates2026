@@ -3,8 +3,6 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 console.log("✅ [DEBUG] reportRoutes.js LOADED");
 
-
-// 🚀 FIX 1: Removed sendBroadcast, Added createBroadcast
 const {
     verifyReportImage,
     createReport,
@@ -14,8 +12,8 @@ const {
     getDepartmentReports,
     getAllReports,
     updateReportStatus,
-    createBroadcast,   // ✅ Yeh wahi hai jo humne pehle theek kiya tha
-    getBroadcasts,     // ✅ Yeh NAYI line add kar crash rokne ke liye
+    createBroadcast,
+    getBroadcasts,
     getNearbyReports,
     detectLocationFromText,
     getAdminStats
@@ -23,7 +21,7 @@ const {
 
 const authenticateToken = require('../middleware/authMiddleware');
 
-// Optional auth: sets req.user if JWT present, does NOT reject if missing
+// Optional auth middleware
 const optionalAuth = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -31,51 +29,35 @@ const optionalAuth = (req, res, next) => {
         try {
             req.user = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_for_development');
         } catch (e) {
-            console.warn("[OptionalAuth] Invalid token, proceeding as unauthenticated");
+            console.warn("[OptionalAuth] Invalid token");
         }
     }
     next();
 };
 
-router.get('/test', (req, res) => {
-    console.log("[DEBUG] /api/reports/test HIT");
-    res.json({ message: "Reports Route Working" });
-});
-
-// ... baaki routes ...
-
-router.post('/broadcast', createBroadcast); // ✅ Broadcast bhejne ke liye
-router.get('/broadcasts', getBroadcasts);   // ✅ Crash rokne ke liye (get history)
+// 1️⃣ STATIC ROUTES (SABSE UPAR)
+router.get('/test', (req, res) => res.json({ message: "Reports Route Working" }));
 
 router.post('/verify-image', verifyReportImage);
 router.post('/detect-location', detectLocationFromText);
 router.post('/create', createReport);
 router.post('/update-status', optionalAuth, updateReportStatus);
-
-// 🚀 FIX 2: Directly calling createBroadcast without "reportController."
 router.post('/broadcast', createBroadcast);
 
-// 🚨 YEH LINE SABSE NEECHE HONI CHAHIYE 🚨
-router.get('/:id', getSingleReport);
+// 2️⃣ CITIZEN & ADMIN STATS (/:id SE PEHLE)
+router.get('/dashboard-stats', authenticateToken, getDashboardStats); // ✅ Fixed Order
+router.get('/my-reports', authenticateToken, getUserReports);        // ✅ Fixed Order
+router.get('/admin/stats', authenticateToken, getAdminStats);         // ✅ Fixed Order
+router.get('/broadcasts', getBroadcasts);                             // ✅ Fixed Order
 
-module.exports = router;
-
-// Citizen authenticated routes
-router.get('/dashboard-stats', authenticateToken, getDashboardStats);
-router.get('/my-reports', authenticateToken, getUserReports);
-
-// Admin authenticated route
-router.get('/admin/stats', authenticateToken, getAdminStats);
-
-// Legacy/Admin routes
+// 3️⃣ LEGACY / OTHER FILTERS
 router.get('/user/:uid', getUserReports);
 router.get('/department/:department', getDepartmentReports);
 router.get('/nearby', getNearbyReports);
-
-// GET ALL reports — optionalAuth so admin's dept is available for filtering
 router.get('/', optionalAuth, getAllReports);
 
-// 🚨 Dynamic route must stay at the bottom!
+// 4️⃣ DYNAMIC ROUTE (EKDAM AAKHRI MEIN)
+// 🚨 Yeh sabse neeche hona chahiye warna saari requests yahi ruk jayengi
 router.get('/:id', getSingleReport);
 
 module.exports = router;
