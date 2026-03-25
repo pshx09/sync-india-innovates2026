@@ -83,7 +83,7 @@ exports.verifyReportImage = async (req, res) => {
         }
 
         console.log(`[AI] Dispatching visual analysis to ${aiUrl}/analyze`);
-        
+
         let analysis;
         try {
             const aiResponse = await axios.post(`${aiUrl}/analyze`, formData, {
@@ -91,7 +91,7 @@ exports.verifyReportImage = async (req, res) => {
                 timeout: 30000
             });
             const result = aiResponse.data;
-            
+
             // Map FastAPI format to expected format
             analysis = {
                 verified: result.is_valid_civic_issue,
@@ -150,7 +150,7 @@ exports.detectLocationFromText = async (req, res) => {
         `;
 
         const ollamaUrl = process.env.OLLAMA_SERVICE_URL;
-        
+
         if (!ollamaUrl) {
             console.warn("[WARNING] OLLAMA_SERVICE_URL is not defined in environment.");
             return res.status(200).json({ found: false, location_string: text, confidence: "Low" });
@@ -164,7 +164,7 @@ exports.detectLocationFromText = async (req, res) => {
                 format: "json",
                 stream: false
             }, { timeout: 15000 });
-            
+
             jsonStr = result.data.response;
         } catch (postErr) {
             console.error("[Ollama HTTP Error] Location Detection Failed:", postErr.message);
@@ -461,7 +461,7 @@ exports.getDashboardStats = async (req, res) => {
 exports.getAdminStats = async (req, res) => {
     try {
         const adminDept = req.user?.department;
-        
+
         let statsQuery, recentQuery, values = [];
         if (adminDept && adminDept !== 'General' && adminDept !== 'All') {
             statsQuery = `
@@ -475,7 +475,7 @@ exports.getAdminStats = async (req, res) => {
             recentQuery = `SELECT id, issue_type, description, status, created_at FROM tickets WHERE department = $1 ORDER BY created_at DESC LIMIT 5;`;
             values = [adminDept];
         } else {
-             statsQuery = `
+            statsQuery = `
                 SELECT 
                     COUNT(*) as total,
                     COUNT(*) FILTER (WHERE status = 'Pending' OR status = 'Open') as pending,
@@ -488,7 +488,7 @@ exports.getAdminStats = async (req, res) => {
 
         const statsResult = await pgDb.query(statsQuery, values);
         const recentResult = await pgDb.query(recentQuery, values);
-        
+
         res.status(200).json({
             stats: {
                 total: parseInt(statsResult.rows[0]?.total || 0),
@@ -695,25 +695,88 @@ exports.updateReportStatus = async (req, res) => {
     }
 };
 
-exports.sendBroadcast = async (req, res) => {
-    const { area, type, message, department, sender, reach } = req.body;
+// ====== YEH UPAR KE SABHI FUNCTIONS KE NEECHE AAYEGA ======
+// (updateReportStatus wale function ke theek baad se yahan se paste karein)
+
+// ==========================================
+// NEW SMART BROADCAST FUNCTION
+// ==========================================
+const { sendWhatsAppMessage } = require('../services/whatsappService');
+
+exports.createBroadcast = async (req, res) => {
     try {
-        const { broadcastTargetedAlert } = require('./whatsappController');
-        const waMessage = `📢 *${(type || 'ALERT').toUpperCase()}*\n📍 Area: ${area}\n\n${message}`;
-        await broadcastTargetedAlert(area, waMessage);
-        const broadcastRef = db.ref('broadcasts');
-        await broadcastRef.push({
-            area, type, message, department: department || 'General',
-            sender: sender || 'Admin', timestamp: new Date().toISOString(),
-            reach: reach || 0, status: 'Sent'
-        });
-        res.status(200).json({ message: "Broadcast sent successfully" });
+        // Frontend se incidentId, custom message, aur naya status aayega
+        const { incidentId, message, status, type, area } = req.body;
+
+        // 1️⃣ BROADCAST TYPE: SPECIFIC INCIDENT UPDATE
+        if (incidentId && message) {
+            // TICKET FETCH KAREIN (Reporter ki details nikalne ke liye)
+            const ticketRes = await pgDb.query('SELECT * FROM tickets WHERE id = $1', [incidentId]);
+            const ticket = ticketRes.rows[0];
+
+            if (!ticket) {
+                return res.status(404).json({ error: "Ticket not found" });
+            }
+
+            // WEBSITE WALON KE LIYE: Database status update karein
+            const newStatus = status || 'In Progress'; // Default 'In Progress'
+            await pgDb.query(
+                'UPDATE tickets SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+                [newStatus, incidentId]
+            );
+
+            // WHATSAPP WALON KE LIYE: Direct WhatsApp message bhejein
+            if (ticket.user_phone) {
+                // Dynamic message format
+                const waMessage = `📢 *Update on your Report #${ticket.id.toString().slice(-6)}*\n\n` +
+                    `📋 *Issue:* ${ticket.issue_type}\n` +
+                    `🔄 *Status:* ${newStatus}\n\n` +
+                    `👨‍💼 *Message from Department:*\n"${message}"\n\n` +
+                    `*Please take necessary precautions.* Our team is actively monitoring the situation. 🏛️`;
+
+                // Format phone number correctly for Green API
+                const formattedPhone = ticket.user_phone.includes('@c.us') ? ticket.user_phone : `91${ticket.user_phone.replace(/\D/g, '').slice(-10)}@c.us`;
+
+                // WhatsApp message shoot!
+                await sendWhatsAppMessage(formattedPhone, waMessage);
+                console.log(`[Broadcast] Message sent to WhatsApp: ${formattedPhone}`);
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: "Broadcast sent via WhatsApp and Website Dashboard updated!"
+            });
+        }
+
+        // 2️⃣ BROADCAST TYPE: GENERAL AREA ALERT
+        else if (area && message) {
+            const { broadcastTargetedAlert } = require('./whatsappController');
+            const waMessage = `📢 *${(type || 'ALERT').toUpperCase()}*\n📍 Area: ${area}\n\n${message}`;
+            await broadcastTargetedAlert(area, waMessage);
+
+            // Firebase me legacy entry save karein
+            if (db) {
+                const broadcastRef = db.ref('broadcasts');
+                await broadcastRef.push({
+                    area, type, message, department: req.user?.department || 'General',
+                    sender: 'Admin', timestamp: new Date().toISOString(),
+                    reach: 0, status: 'Sent'
+                });
+            }
+            return res.status(200).json({ message: "General area broadcast sent successfully" });
+        }
+
+        return res.status(400).json({ error: "Missing parameters. Need either incidentId+message or area+message." });
+
     } catch (error) {
-        console.error("Broadcast Error:", error);
-        res.status(500).json({ error: "Failed to send broadcast", details: error.message });
+        console.error("❌ Broadcast Error:", error);
+        res.status(500).json({ error: "Failed to process broadcast", details: error.message });
     }
 };
 
+// ==========================================
+// NEARBY REPORTS FUNCTION
+// ==========================================
 exports.getNearbyReports = async (req, res) => {
     const { lat, lng, radius = 5 } = req.query; // Radius in km
 
