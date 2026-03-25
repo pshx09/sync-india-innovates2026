@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 console.log("✅ [DEBUG] reportRoutes.js LOADED");
+
+// 🚀 FIX 1: Removed sendBroadcast, Added createBroadcast
 const {
     verifyReportImage,
     createReport,
@@ -11,11 +13,12 @@ const {
     getDepartmentReports,
     getAllReports,
     updateReportStatus,
-    sendBroadcast,
+    createBroadcast,
     getNearbyReports,
     detectLocationFromText,
     getAdminStats
 } = require('../controllers/reportController');
+
 const authenticateToken = require('../middleware/authMiddleware');
 
 // Optional auth: sets req.user if JWT present, does NOT reject if missing
@@ -41,7 +44,10 @@ router.post('/verify-image', verifyReportImage);
 router.post('/detect-location', detectLocationFromText);
 router.post('/create', createReport);
 router.post('/update-status', optionalAuth, updateReportStatus);
-router.post('/broadcast', reportController.createBroadcast);
+
+// 🚀 FIX 2: Directly calling createBroadcast without "reportController."
+router.post('/broadcast', createBroadcast);
+
 // Citizen authenticated routes
 router.get('/dashboard-stats', authenticateToken, getDashboardStats);
 router.get('/my-reports', authenticateToken, getUserReports);
@@ -53,8 +59,11 @@ router.get('/admin/stats', authenticateToken, getAdminStats);
 router.get('/user/:uid', getUserReports);
 router.get('/department/:department', getDepartmentReports);
 router.get('/nearby', getNearbyReports);
+
 // GET ALL reports — optionalAuth so admin's dept is available for filtering
 router.get('/', optionalAuth, getAllReports);
+
+// 🚨 Dynamic route must stay at the bottom!
 router.get('/:id', getSingleReport);
 
 module.exports = router;
