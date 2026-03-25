@@ -10,19 +10,25 @@ const otpStore = new Map();
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
 // NodeMailer Transporter — initialized lazily to ensure .env is loaded
+// NodeMailer Transporter — initialized lazily to ensure .env is loaded
 let _transporter = null;
 function getTransporter() {
     if (!_transporter) {
         console.log("[Nodemailer] Creating transporter with user:", process.env.EMAIL_USER);
         _transporter = nodemailer.createTransport({
-            service: 'gmail',
+            host: 'smtp.gmail.com',
+            port: 465,
+            secure: true, // true for port 465 (SSL)
             auth: {
                 user: process.env.EMAIL_USER,
                 pass: process.env.EMAIL_PASS
             },
-            connectionTimeout: 10000,  // 10s connection timeout
-            greetingTimeout: 10000,    // 10s greeting timeout
-            socketTimeout: 15000       // 15s socket timeout
+            tls: {
+                rejectUnauthorized: false // Bypass SSL verification issues on cloud servers
+            },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000
         });
     }
     return _transporter;
@@ -34,13 +40,13 @@ function getTransporter() {
 exports.signupRequest = async (req, res) => {
     try {
         console.log("📥 Incoming Signup Payload:", JSON.stringify(req.body));
-        
+
         const { name, email, password, phone, role, department, address, city } = req.body;
-        
+
         // RELAXED validation: only name, email, password are strictly required
         if (!name || !email || !password) {
             console.log("❌ Signup rejected: Missing name, email, or password");
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: "Name, email, and password are required.",
                 received: { name: !!name, email: !!email, password: !!password }
             });
@@ -81,7 +87,7 @@ exports.signupRequest = async (req, res) => {
         } catch (mailError) {
             console.error("❌ Nodemailer Error:", mailError.message);
             // STILL return 200 — OTP is stored in memory, user can see it in console for dev
-            return res.status(200).json({ 
+            return res.status(200).json({
                 message: "OTP generated (email delivery may have failed — check server console for OTP).",
                 email,
                 otp_debug: otp  // Send back for dev testing
@@ -101,7 +107,7 @@ exports.signupVerify = async (req, res) => {
     try {
         const { email, otp } = req.body;
         console.log("📥 Verify OTP request for:", email, "with OTP:", otp);
-        
+
         if (!email || !otp) return res.status(400).json({ error: "Email and OTP required" });
 
         const pendingUser = otpStore.get(email);
@@ -118,7 +124,7 @@ exports.signupVerify = async (req, res) => {
         const { formData } = pendingUser;
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(formData.password, salt);
-        
+
         // Split name for first_name / last_name columns
         const nameParts = formData.name.split(' ');
         const firstName = nameParts[0] || '';
@@ -128,13 +134,13 @@ exports.signupVerify = async (req, res) => {
             INSERT INTO users (email, password_hash, first_name, last_name, name, phone, role, department, address, city, is_verified)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, TRUE) RETURNING *;
         `;
-        
+
         const result = await db.query(insertQuery, [
             formData.email, passwordHash, firstName, lastName, formData.name,
-            formData.phone, formData.role || 'citizen', formData.department, 
+            formData.phone, formData.role || 'citizen', formData.department,
             formData.address, formData.city
         ]);
-        
+
         const user = result.rows[0];
         otpStore.delete(email); // Cleanup
 
@@ -316,9 +322,9 @@ exports.getProfile = async (req, res) => {
     try {
         const userId = req.user.id;
         const result = await db.query('SELECT id, email, name, first_name as "firstName", last_name as "lastName", phone, address, city, role, points FROM users WHERE id = $1', [userId]);
-        
+
         if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
-        
+
         res.status(200).json({ user: result.rows[0] });
     } catch (error) {
         console.error("❌ Get Profile Error:", error);
@@ -330,7 +336,7 @@ exports.updateProfile = async (req, res) => {
     try {
         const userId = req.user.id;
         const { firstName, lastName, phone, address } = req.body;
-        
+
         const updateQuery = `
             UPDATE users 
             SET first_name = COALESCE($1, first_name),
@@ -341,14 +347,14 @@ exports.updateProfile = async (req, res) => {
             WHERE id = $6
             RETURNING id, email, name, first_name as "firstName", last_name as "lastName", phone, address, city, role, points;
         `;
-        
+
         const result = await db.query(updateQuery, [firstName, lastName, phone, address, userId]);
-        
+
         if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
-        
-        res.status(200).json({ 
+
+        res.status(200).json({
             message: "Profile updated successfully!",
-            user: result.rows[0] 
+            user: result.rows[0]
         });
     } catch (error) {
         console.error("❌ Update Profile Error:", error);
