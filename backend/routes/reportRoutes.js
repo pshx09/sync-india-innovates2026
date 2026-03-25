@@ -41,8 +41,7 @@ router.post('/verify-image', verifyReportImage);
 router.post('/detect-location', detectLocationFromText);
 router.post('/create', createReport);
 router.post('/update-status', optionalAuth, updateReportStatus);
-router.post('/broadcast', optionalAuth, sendBroadcast);
-
+router.post('/broadcast', reportController.createBroadcast);
 // Citizen authenticated routes
 router.get('/dashboard-stats', authenticateToken, getDashboardStats);
 router.get('/my-reports', authenticateToken, getUserReports);
