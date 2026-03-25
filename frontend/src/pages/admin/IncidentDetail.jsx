@@ -2,13 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     ArrowLeft, MapPin, CheckCircle, XCircle, AlertTriangle,
-    User, Calendar, ExternalLink, Loader2, Sparkles,
-    Shield, Clock, MessageSquare, Send, Bell
+    Calendar, ExternalLink, Sparkles, Shield, Clock, Send, Bell
 } from 'lucide-react';
 import AdminLayout from './AdminLayout';
-
 import { toast } from 'react-hot-toast';
-import { sanitizeKey } from '../../utils/firebaseUtils';
 
 const IncidentDetail = () => {
     const { id } = useParams();
@@ -16,7 +13,8 @@ const IncidentDetail = () => {
     const [report, setReport] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    const cleanId = id.startsWith('RPT-') ? id.replace('RPT-', '') : id;
+    // 🚀 CRITICAL FIX: Added `?` to prevent crash if ID is missing in URL
+    const cleanId = id?.startsWith('RPT-') ? id.replace('RPT-', '') : (id || '');
 
     useEffect(() => {
         const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
@@ -116,7 +114,6 @@ const IncidentDetail = () => {
     return (
         <AdminLayout>
             <div className="max-w-7xl mx-auto pb-20">
-                {/* Unified Header */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
                     <div className="flex items-center gap-5">
                         <button
@@ -153,9 +150,7 @@ const IncidentDetail = () => {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Left Column: Visual Ground Truth (2/3) */}
                     <div className="lg:col-span-2 space-y-8">
-                        {/* Evidence Viewer */}
                         <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-6 shadow-sm border border-slate-200 dark:border-slate-700/50 transition-colors">
                             <div className="flex items-center justify-between mb-6">
                                 <h3 className="font-black text-slate-900 dark:text-white uppercase tracking-widest text-sm flex items-center gap-2">
@@ -165,24 +160,50 @@ const IncidentDetail = () => {
                                     High Resolution • Captured via App
                                 </div>
                             </div>
-                            <div className="group relative rounded-[2rem] overflow-hidden bg-slate-100 dark:bg-slate-900 aspect-video">
-                                <img
-                                    referrerPolicy="no-referrer"
-                                    src={(report.imageUrl && report.imageUrl.includes('via.placeholder.com')) ? report.imageUrl.replace('via.placeholder.com', 'placehold.co') : (report.imageUrl || "https://placehold.co/800x450")}
-                                    className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
-                                    alt="Incident Evidence"
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                                <div className="absolute bottom-6 left-6 text-white translate-y-4 group-hover:translate-y-0 transition-all">
+
+                            {/* MULTIMEDIA RENDERER */}
+                            <div className="group relative rounded-[2rem] overflow-hidden bg-slate-100 dark:bg-slate-900 aspect-video flex items-center justify-center">
+                                {(() => {
+                                    const mediaUrl = report.image_url || report.imageUrl || report.fileUrl;
+                                    const lowerUrl = (mediaUrl || '').toLowerCase();
+                                    const isVideo = report.mediaType === 'video' || lowerUrl.includes('.mp4') || lowerUrl.includes('.mov') || lowerUrl.includes('.webm');
+                                    const isAudio = report.mediaType === 'audio' || lowerUrl.includes('.mp3') || lowerUrl.includes('.ogg') || lowerUrl.includes('.wav');
+
+                                    if (!mediaUrl) return <span className="text-slate-400 font-bold">No Media Available</span>;
+
+                                    if (isVideo) {
+                                        return <video src={mediaUrl} className="w-full h-full object-contain bg-black" controls />;
+                                    } else if (isAudio) {
+                                        return (
+                                            <div className="flex flex-col items-center gap-4 w-full px-12">
+                                                <div className="w-16 h-16 bg-blue-500/20 text-blue-500 rounded-full flex items-center justify-center animate-pulse">
+                                                    <Sparkles size={32} />
+                                                </div>
+                                                <audio controls className="w-full" src={mediaUrl} />
+                                            </div>
+                                        );
+                                    } else {
+                                        return (
+                                            <img
+                                                referrerPolicy="no-referrer"
+                                                src={mediaUrl.includes('via.placeholder.com') ? mediaUrl.replace('via.placeholder.com', 'placehold.co') : mediaUrl}
+                                                className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
+                                                alt="Incident Evidence"
+                                            />
+                                        );
+                                    }
+                                })()}
+
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+                                <div className="absolute bottom-6 left-6 text-white translate-y-4 group-hover:translate-y-0 transition-all pointer-events-none">
                                     <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest mb-1">
                                         <MapPin size={14} className="text-red-500" /> Geospatial Coordinates
                                     </div>
-                                    <p className="font-mono text-[10px] opacity-80">LAT: {report.location?.lat} • LNG: {report.location?.lng}</p>
+                                    <p className="font-mono text-[10px] opacity-80">LAT: {report.location?.lat || 'N/A'} • LNG: {report.location?.lng || 'N/A'}</p>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Location Intelligence */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <div className="bg-white dark:bg-slate-800 rounded-[2rem] p-6 shadow-sm border border-slate-200 dark:border-slate-700/50 transition-colors">
                                 <h4 className="font-black text-slate-400 uppercase tracking-widest text-[10px] mb-4">Location Manifest</h4>
@@ -203,17 +224,15 @@ const IncidentDetail = () => {
                                         {report.userName?.charAt(0) || 'U'}
                                     </div>
                                     <div>
-                                        <p className="font-bold text-slate-900 dark:text-white text-sm leading-tight mb-1">{report.userName}</p>
-                                        <p className="text-[10px] text-slate-400 uppercase font-black tracking-tighter">Karma Score: 450 • Verified Citizen</p>
+                                        <p className="font-bold text-slate-900 dark:text-white text-sm leading-tight mb-1">{report.userName || 'Anonymous Citizen'}</p>
+                                        <p className="text-[10px] text-slate-400 uppercase font-black tracking-tighter">Karma Score: 450 • Verified</p>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Right Column: AI Analysis & Actions (1/3) */}
                     <div className="space-y-8">
-                        {/* Dynamic AI Deep Analysis */}
                         <div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-[2.5rem] p-8 text-white shadow-xl shadow-blue-600/20 relative overflow-hidden group">
                             <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
                                 <Sparkles size={120} />
@@ -238,14 +257,13 @@ const IncidentDetail = () => {
                                     <div className="bg-black/20 backdrop-blur-sm p-4 rounded-2xl border border-white/10">
                                         <div className="text-[10px] font-black uppercase text-white/60 mb-2">Detailed Observation</div>
                                         <p className="text-xs font-medium leading-relaxed italic">
-                                            "{report.aiAnalysis || `Analysis confirms a ${report.category} incident. Visual markers match official severity threshold for Department response.`}"
+                                            "{report.ai_summary || report.aiAnalysis || `Analysis confirms a ${report.type || 'incident'}. Visual markers match official severity threshold.`}"
                                         </p>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Action Control Center */}
                         <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-8 shadow-sm border border-slate-200 dark:border-slate-700/50 transition-colors">
                             <h3 className="font-black text-slate-900 dark:text-white uppercase tracking-widest text-sm mb-6 flex items-center gap-2">
                                 <Shield size={18} className="text-slate-400" /> Verify & Deploy
@@ -316,7 +334,6 @@ const IncidentDetail = () => {
                             )}
                         </div>
 
-                        {/* Audit Trail */}
                         <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] shadow-sm border border-slate-200 dark:border-slate-700/50 transition-colors">
                             <h3 className="font-black text-slate-900 dark:text-white uppercase tracking-widest text-xs mb-6 flex items-center gap-2">
                                 <Clock size={16} className="text-slate-400" /> Data Lifecycle

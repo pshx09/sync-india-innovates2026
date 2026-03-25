@@ -262,48 +262,63 @@ const AdminDashboard = () => {
                                     </span>
                                 </div>
 
-                                {/* Image Area */}
-                                <div className="relative rounded-xl overflow-hidden mb-6 group cursor-pointer bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 h-48 flex items-center justify-center">
-                                    {selectedIncident.mediaType === 'video' ? (
-                                        <video
-                                            src={selectedIncident.imageUrl}
-                                            className="w-full h-full object-cover"
-                                            controls
-                                        />
-                                    ) : selectedIncident.mediaType === 'audio' ? (
-                                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white p-4">
-                                            <div className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Audio Evidence</div>
-                                            <audio controls className="w-full h-10" src={selectedIncident.imageUrl} />
-                                        </div>
-                                    ) : selectedIncident.mediaType === 'text' ? (
-                                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-800/50 p-6 text-center">
-                                            <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-full mb-3 text-blue-600 dark:text-blue-400">
-                                                <AlignLeft size={24} />
-                                            </div>
-                                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Text Report</div>
-                                        </div>
-                                    ) : selectedIncident.imageUrl ? (
-                                        <img
-                                            referrerPolicy="no-referrer"
-                                            src={selectedIncident.imageUrl}
-                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                            alt="Incident Evidence"
-                                            onError={(e) => {
-                                                console.error("Image load failed:", selectedIncident.imageUrl);
-                                                e.target.style.display = 'none';
-                                                e.target.parentElement.querySelector('.no-media-placeholder').classList.remove('hidden');
-                                                e.target.parentElement.querySelector('.no-media-placeholder').classList.add('flex');
-                                            }}
-                                        />
-                                    ) : null}
+                                {/* Image Area - FIXED FOR WHATSAPP MEDIA */}
+                                <div className="relative rounded-xl overflow-hidden mb-6 group bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 h-48 flex items-center justify-center">
+                                    {(() => {
+                                        // 🚀 CRITICAL: Capture both frontend and backend formats
+                                        const mediaUrl = selectedIncident.image_url || selectedIncident.imageUrl || selectedIncident.fileUrl;
+                                        const lowerUrl = (mediaUrl || '').toLowerCase();
+                                        const isVideo = selectedIncident.mediaType === 'video' || lowerUrl.includes('.mp4') || lowerUrl.includes('.mov') || lowerUrl.includes('.webm');
+                                        const isAudio = selectedIncident.mediaType === 'audio' || lowerUrl.includes('.mp3') || lowerUrl.includes('.ogg') || lowerUrl.includes('.wav');
+                                        const isText = selectedIncident.mediaType === 'text';
 
-                                    <div className={`absolute inset-0 flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-400 no-media-placeholder ${selectedIncident.mediaType === 'video' || selectedIncident.mediaType === 'text' || selectedIncident.mediaType === 'audio' || selectedIncident.imageUrl ? 'hidden' : 'flex'
-                                        }`}>
-                                        <div className="bg-white dark:bg-slate-700 p-3 rounded-full mb-2">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
-                                        </div>
-                                        <span className="text-xs font-bold opacity-70">No Media Available</span>
-                                    </div>
+                                        if (!mediaUrl && !isText && !isAudio) {
+                                            return (
+                                                <div className="flex flex-col items-center justify-center text-slate-400">
+                                                    <div className="bg-white dark:bg-slate-700 p-3 rounded-full mb-2">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
+                                                    </div>
+                                                    <span className="text-xs font-bold opacity-70">No Media Available</span>
+                                                </div>
+                                            );
+                                        }
+
+                                        if (isVideo) {
+                                            return <video src={mediaUrl} className="w-full h-full object-cover bg-black" controls />;
+                                        }
+                                        else if (isAudio) {
+                                            return (
+                                                <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white p-4">
+                                                    <div className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Audio Evidence</div>
+                                                    <audio controls className="w-full h-10" src={mediaUrl} />
+                                                </div>
+                                            );
+                                        }
+                                        else if (isText) {
+                                            return (
+                                                <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-800/50 p-6 text-center">
+                                                    <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-full mb-3 text-blue-600 dark:text-blue-400">
+                                                        <AlignLeft size={24} />
+                                                    </div>
+                                                    <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Text Report</div>
+                                                </div>
+                                            );
+                                        }
+                                        else {
+                                            return (
+                                                <img
+                                                    referrerPolicy="no-referrer"
+                                                    src={mediaUrl}
+                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                                    alt="Incident Evidence"
+                                                    onError={(e) => {
+                                                        e.target.onerror = null;
+                                                        e.target.src = "https://placehold.co/400x300?text=Media+Error";
+                                                    }}
+                                                />
+                                            );
+                                        }
+                                    })()}
 
                                     {selectedIncident.mediaType !== 'text' && selectedIncident.mediaType !== 'audio' && (
                                         <div className="absolute top-2 right-2 flex gap-1 z-10">

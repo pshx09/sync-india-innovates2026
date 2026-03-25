@@ -6,6 +6,11 @@ const { v4: uuidv4 } = require('uuid');
 const { sendWhatsAppMessage, sendWhatsAppAudio } = require('../services/whatsappService');
 const { query } = require('../config/db');
 
+// 🚀 NEW IMPORTS REQUIRED FOR PHYSICAL FILE HANDLING (LIKE WEBSITE)
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
 // ==========================================
 // CONFIGURATION & UTILS
 // ==========================================
@@ -119,7 +124,6 @@ async function getSmartReplyFromAI(context) {
 // FIREBASE WEBHOOK HANDLER (Legacy/Meta)
 // ==========================================
 async function processIncomingMessage(message, provider, metadata = {}) {
-    // (Kept intact for your Firebase/Meta fallbacks)
     let from, senderNumber;
     try {
         let type, body, mediaId, mimeTypeRaw, mediaUrl = null, locationData = null;
@@ -137,7 +141,6 @@ async function processIncomingMessage(message, provider, metadata = {}) {
             else if (type === 'image') { mediaId = message.image.id; mimeTypeRaw = message.image.mime_type; }
             else if (type === 'location') locationData = message.location;
         }
-        // ... (Firebase logic preserved implicitly as it was untouched in your code)
     } catch (e) {
         console.error("Fatal Handler Error:", e);
     }
@@ -169,7 +172,6 @@ exports.verifyWebhook = (req, res) => {
 };
 
 exports.broadcastTargetedAlert = async (targetLocation, message, simulatedReceiver = null) => {
-    // (Broadcast logic kept intact)
     return 1;
 };
 
@@ -206,27 +208,21 @@ const ISSUE_TO_DEPARTMENT = {
 exports.receiveWebhook = async (req, res) => {
     const body = req.body;
 
-    // 🚨 1. SILENT REJECTION: Drop non-incoming messages immediately (No Logs)
     if (body?.typeWebhook !== 'incomingMessageReceived') {
         return res.status(200).send('IGNORED_NON_INCOMING_EVENT');
     }
 
-    // Extract basic IDs first to check if it's a group
     const senderData = body?.senderData || body?.messageData?.senderData || {};
     const instanceData = body?.instanceData || {};
     const chatId = senderData?.chatId || body?.chatId || null;
     const sender = senderData?.sender || null;
     const wid = instanceData?.wid || null;
 
-    // 🚨 2. SILENT GROUP BLOCKER: Ignore Groups & Statuses without cluttering logs
     if (!chatId || (chatId && chatId.includes('@g.us')) || chatId === 'status@broadcast' || sender === wid) {
-        return res.status(200).send('OK'); // Chup-chap bahar nikal do, no logs!
+        return res.status(200).send('OK');
     }
 
-    // 3. IMMEDIATE ACKNOWLEDGMENT (Tell Green API we got it)
     res.status(200).send('OK');
-
-    // 🎯 4. LOG ONLY VALID MESSAGES: Ab sirf personal chats ka payload print hoga!
     console.log("\n\n🚪 [VALID PERSONAL MESSAGE RAW PAYLOAD]:", JSON.stringify(body, null, 2));
 
     try {
@@ -238,8 +234,6 @@ exports.receiveWebhook = async (req, res) => {
         let latitude = null;
         let longitude = null;
 
-        // Robust media extraction
-        // 🚀 Robust media extraction (UPDATED FOR VIDEO & AUDIO)
         if (
             typeMessage === 'imageMessage' ||
             typeMessage === 'videoMessage' ||
@@ -247,7 +241,6 @@ exports.receiveWebhook = async (req, res) => {
             typeMessage === 'fileMessage' ||
             typeMessage === 'documentMessage'
         ) {
-            // Green API puts video/audio URLs inside fileMessageData sometimes, or their respective keys
             const mediaData = messageData?.imageMessageData ||
                 messageData?.videoMessageData ||
                 messageData?.audioMessageData ||
@@ -268,13 +261,10 @@ exports.receiveWebhook = async (req, res) => {
 
         console.log(`[Green API Webhook] Received payload:`, { chatId, text, typeMessage, imageUrl });
 
-        // Fetch Session from Database
         let sessionRes = await query('SELECT * FROM whatsapp_sessions WHERE phone_number = $1', [chatId]);
         let session = sessionRes.rows[0];
-
         const commandText = text.toLowerCase().trim();
 
-        // Handle Session Reset / Start
         if (!session || commandText === 'reset' || commandText === 'hi' || commandText === 'hello' || commandText === 'start') {
             if (!session) {
                 await query("INSERT INTO whatsapp_sessions (phone_number, current_step) VALUES ($1, 'NEW')", [chatId]);
@@ -283,7 +273,6 @@ exports.receiveWebhook = async (req, res) => {
             }
             session = { phone_number: chatId, current_step: 'NEW', temp_data: {} };
 
-            // 🚨 FIX: Talk back to the user when they reset!
             if (commandText === 'reset') {
                 await sendWhatsAppMessage(chatId, "🔄 System Reset Successful! Purani memory clear ho gayi hai. Kripiya ab naye sire se photo bhejein. 📸");
                 return;
@@ -308,11 +297,14 @@ exports.receiveWebhook = async (req, res) => {
             const currentImageUrl = imageUrl;
 
             if (!currentImageUrl) {
-                await sendWhatsAppMessage(chatId, "⚠️ Please send a clear photo of the incident first. We cannot proceed without an image.");
+                await sendWhatsAppMessage(chatId, "⚠️ Please send a clear photo, video, or audio of the incident first. We cannot proceed without media.");
                 return;
             }
 
-            await sendWhatsAppMessage(chatId, "🔍 *Analyzing your image with AI Forensics...*");
+            const isVideo = typeMessage === 'videoMessage';
+            const isAudio = typeMessage === 'audioMessage';
+
+            await sendWhatsAppMessage(chatId, `🔍 *Analyzing your ${isVideo ? 'video' : isAudio ? 'audio' : 'image'} with AI Forensics...*`);
 
             const AI_SERVICE_URL = process.env.AI_SERVICE_URL;
             const MAX_RETRIES = 3;
@@ -323,17 +315,33 @@ exports.receiveWebhook = async (req, res) => {
 
             if (AI_SERVICE_URL) {
                 for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+                    let tempFilePath = null; // 🚀 Tracker for temporary file
+
                     try {
                         console.log(`[Green API] AI Forensics attempt ${attempt}/${MAX_RETRIES} → ${AI_SERVICE_URL}/analyze`);
 
-                        let base64Image = await downloadMedia(currentImageUrl);
-
-                        // 🚨 FIX: Bulletproof FormData handling for 422 Error
+                        let base64Media = await downloadMedia(currentImageUrl);
                         const form = new FormData();
-                        if (base64Image) {
-                            const imageBuffer = Buffer.from(base64Image, 'base64');
-                            form.append('file', imageBuffer, { filename: 'whatsapp_capture.jpg', contentType: 'image/jpeg' });
+
+                        if (base64Media) {
+                            // 🚀 THE ULTIMATE FIX: Create a temporary physical file like the website does
+                            const buffer = Buffer.from(base64Media, 'base64');
+                            const ext = isVideo ? 'mp4' : isAudio ? 'mp3' : 'jpg';
+                            const mimeType = isVideo ? 'video/mp4' : isAudio ? 'audio/mpeg' : 'image/jpeg';
+
+                            // Use OS temp directory to avoid permission issues on Render
+                            tempFilePath = path.join(os.tmpdir(), `wa_temp_${Date.now()}.${ext}`);
+
+                            // Write buffer to disk
+                            fs.writeFileSync(tempFilePath, buffer);
+
+                            // Read from disk using streams (Exactly how ticketController does it)
+                            form.append('file', fs.createReadStream(tempFilePath), {
+                                filename: `whatsapp_upload.${ext}`,
+                                contentType: mimeType
+                            });
                         }
+
                         form.append('caption', text || "No description");
 
                         const aiResponse = await axios.post(`${AI_SERVICE_URL}/analyze`, form, {
@@ -342,20 +350,33 @@ exports.receiveWebhook = async (req, res) => {
                                 'ngrok-skip-browser-warning': 'true',
                                 'User-Agent': 'NagarBackend/1.0'
                             },
-                            timeout: 60000
+                            timeout: 60000,
+                            maxContentLength: Infinity,
+                            maxBodyLength: Infinity
                         });
 
                         aiResult = aiResponse.data;
                         aiReachable = true;
                         console.log("[Green API] ✅ AI Forensics result:", JSON.stringify(aiResult, null, 2));
+
+                        // 🧹 Cleanup temp file after success
+                        if (tempFilePath && fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+
                         break;
 
                     } catch (aiError) {
+                        // 🧹 Cleanup temp file if error occurs
+                        if (tempFilePath && fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+
                         const status = aiError.response?.status;
                         const isRetryable = !status || status >= 500 || aiError.code === 'ECONNREFUSED' || aiError.code === 'ECONNABORTED' || aiError.code === 'ETIMEDOUT';
 
                         console.error(`[Green API] AI attempt ${attempt} failed (status=${status || 'N/A'})`);
-                        if (!isRetryable) break;
+
+                        if (!isRetryable) {
+                            console.error(`[Green API] Non-retryable error (e.g. 400). File format might not be supported by AI.`);
+                            break;
+                        }
 
                         if (attempt < MAX_RETRIES) {
                             const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
@@ -368,14 +389,14 @@ exports.receiveWebhook = async (req, res) => {
             // Gating Logic
             if (aiReachable && aiResult && aiResult.is_fake_or_watermarked) {
                 await sendWhatsAppAudio(chatId, 'report_rejected.mp3');
-                await sendWhatsAppMessage(chatId, "❌ This image appears to be from the internet, AI-generated, or edited. Please send an *original, unedited photo*.");
+                await sendWhatsAppMessage(chatId, "❌ This media appears to be from the internet or edited. Please send an *original, unedited photo/video*.");
                 await query("UPDATE whatsapp_sessions SET current_step = 'NEW', temp_data = '{}' WHERE phone_number = $1", [chatId]);
                 return;
             }
 
             if (aiReachable && aiResult && !aiResult.is_valid_civic_issue) {
                 await sendWhatsAppAudio(chatId, 'report_rejected.mp3');
-                await sendWhatsAppMessage(chatId, "❌ We couldn't clearly detect a civic issue in this image. Please click a clearer photo and try again.");
+                await sendWhatsAppMessage(chatId, "❌ We couldn't clearly detect a civic issue in this media. Please click a clearer view and try again.");
                 await query("UPDATE whatsapp_sessions SET current_step = 'NEW', temp_data = '{}' WHERE phone_number = $1", [chatId]);
                 return;
             }
