@@ -76,6 +76,7 @@ const Broadcast = () => {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
+
                     // 🚀 YEH RAHA MAIN FIX: incidentId bhejna zaroori hai!
                     incidentId: location.state?.incidentId || null,
                     area: target,
