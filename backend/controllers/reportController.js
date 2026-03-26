@@ -332,7 +332,14 @@ exports.getAllReports = async (req, res) => {
         // Transform rows to match frontend expected shape
         const reports = result.rows.map(row => {
             const mediaPath = row.image_url || null;
-            const fullMediaUrl = mediaPath ? `${req.protocol}://${req.get('host')}${mediaPath}` : null;
+            let fullMediaUrl = null;
+            if (mediaPath) {
+                if (mediaPath.startsWith('http')) {
+                    fullMediaUrl = mediaPath;
+                } else {
+                    fullMediaUrl = `${req.protocol}://${req.get('host')}${mediaPath.startsWith('/') ? '' : '/'}${mediaPath}`;
+                }
+            }
             const ext = mediaPath ? mediaPath.split('.').pop().toLowerCase() : '';
             const mediaType = ['mp4', 'webm', 'mov', 'avi'].includes(ext) ? 'video'
                 : ['mp3', 'wav', 'ogg', 'm4a'].includes(ext) ? 'audio' : 'image';
@@ -530,7 +537,14 @@ exports.getUserReports = async (req, res) => {
 
         const reports = result.rows.map(row => {
             const mediaPath = row.image_url || null;
-            const fullMediaUrl = mediaPath ? `${req.protocol}://${req.get('host')}${mediaPath}` : null;
+            let fullMediaUrl = null;
+            if (mediaPath) {
+                if (mediaPath.startsWith('http')) {
+                    fullMediaUrl = mediaPath;
+                } else {
+                    fullMediaUrl = `${req.protocol}://${req.get('host')}${mediaPath.startsWith('/') ? '' : '/'}${mediaPath}`;
+                }
+            }
             const ext = mediaPath ? mediaPath.split('.').pop().toLowerCase() : '';
             const mediaType = ['mp4', 'webm', 'mov', 'avi'].includes(ext) ? 'video'
                 : ['mp3', 'wav', 'ogg', 'm4a'].includes(ext) ? 'audio' : 'image';
@@ -585,7 +599,14 @@ exports.getSingleReport = async (req, res) => {
 
         const row = result.rows[0];
         const mediaPath = row.image_url || null;
-        const fullMediaUrl = mediaPath ? `${req.protocol}://${req.get('host')}${mediaPath}` : null;
+        let fullMediaUrl = null;
+        if (mediaPath) {
+            if (mediaPath.startsWith('http')) {
+                fullMediaUrl = mediaPath;
+            } else {
+                fullMediaUrl = `${req.protocol}://${req.get('host')}${mediaPath.startsWith('/') ? '' : '/'}${mediaPath}`;
+            }
+        }
         const ext = mediaPath ? mediaPath.split('.').pop().toLowerCase() : '';
         const mediaType = ['mp4', 'webm', 'mov', 'avi'].includes(ext) ? 'video'
             : ['mp3', 'wav', 'ogg', 'm4a'].includes(ext) ? 'audio' : 'image';
@@ -636,7 +657,14 @@ exports.getDepartmentReports = async (req, res) => {
         const result = await pgDb.query(query, [department]);
         const reports = result.rows.map(row => {
             const mediaPath = row.image_url || null;
-            const fullMediaUrl = mediaPath ? `${req.protocol}://${req.get('host')}${mediaPath}` : null;
+            let fullMediaUrl = null;
+            if (mediaPath) {
+                if (mediaPath.startsWith('http')) {
+                    fullMediaUrl = mediaPath;
+                } else {
+                    fullMediaUrl = `${req.protocol}://${req.get('host')}${mediaPath.startsWith('/') ? '' : '/'}${mediaPath}`;
+                }
+            }
             const ext = mediaPath ? mediaPath.split('.').pop().toLowerCase() : '';
             const mediaType = ['mp4', 'webm', 'mov', 'avi'].includes(ext) ? 'video'
                 : ['mp3', 'wav', 'ogg', 'm4a'].includes(ext) ? 'audio' : 'image';
