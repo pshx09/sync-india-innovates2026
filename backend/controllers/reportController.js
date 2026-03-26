@@ -882,7 +882,7 @@ exports.getBroadcasts = async (req, res) => {
 };
 
 // 2️⃣ Updated createBroadcast function
-exports.createBroadcast = async (req, res) => {
+/*exports.createBroadcast = async (req, res) => {
     try {
         // Frontend shayad inme se kisi bhi naam se ID bheje
         const incidentId = req.body.incidentId || req.body.reportId || req.body.id;
@@ -944,4 +944,4 @@ exports.createBroadcast = async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: "Failed to process broadcast" });
     }
-};
+};*/
