@@ -164,8 +164,7 @@ const IncidentDetail = () => {
                             {/* MULTIMEDIA RENDERER */}
                             <div className="group relative rounded-[2rem] overflow-hidden bg-slate-100 dark:bg-slate-900 aspect-video flex items-center justify-center">
                                 {(() => {
-                                    const mediaUrl = report.image_url || report.imageUrl || report.fileUrl;
-                                    const lowerUrl = (mediaUrl || '').toLowerCase();
+                                    const mediaUrl = report.imageUrl || report.image_url || report.fileUrl; const lowerUrl = (mediaUrl || '').toLowerCase();
                                     const isVideo = report.mediaType === 'video' || lowerUrl.includes('.mp4') || lowerUrl.includes('.mov') || lowerUrl.includes('.webm');
                                     const isAudio = report.mediaType === 'audio' || lowerUrl.includes('.mp3') || lowerUrl.includes('.ogg') || lowerUrl.includes('.wav');
 

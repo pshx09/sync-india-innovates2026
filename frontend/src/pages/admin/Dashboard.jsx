@@ -266,7 +266,9 @@ const AdminDashboard = () => {
                                 <div className="relative rounded-xl overflow-hidden mb-6 group bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 h-48 flex items-center justify-center">
                                     {(() => {
                                         // 🚀 CRITICAL: Capture both frontend and backend formats
-                                        const mediaUrl = selectedIncident.image_url || selectedIncident.imageUrl || selectedIncident.fileUrl;
+                                        //const mediaUrl = selectedIncident.image_url || selectedIncident.imageUrl || selectedIncident.fileUrl;
+                                        // 🚀 CRITICAL: Capture both frontend and backend formats
+                                        const mediaUrl = selectedIncident.imageUrl || selectedIncident.image_url || selectedIncident.fileUrl;
                                         const lowerUrl = (mediaUrl || '').toLowerCase();
                                         const isVideo = selectedIncident.mediaType === 'video' || lowerUrl.includes('.mp4') || lowerUrl.includes('.mov') || lowerUrl.includes('.webm');
                                         const isAudio = selectedIncident.mediaType === 'audio' || lowerUrl.includes('.mp3') || lowerUrl.includes('.ogg') || lowerUrl.includes('.wav');
