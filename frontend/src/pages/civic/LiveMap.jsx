@@ -3,7 +3,6 @@ import { MapPin, X, Navigation, Filter, AlertCircle, Clock, CheckCircle } from '
 import { useNavigate } from 'react-router-dom';
 import CivicLayout from './CivicLayout';
 
-
 import { mappls } from 'mappls-web-maps';
 const mapplsClassObject = new mappls();
 import { useTheme } from '../../context/ThemeContext';
@@ -13,52 +12,19 @@ const containerStyle = {
     height: '100%'
 };
 
-// Light mode map styles
+// Map Styles (Light & Dark)
 const lightMapStyles = [
-    {
-        featureType: "all",
-        elementType: "geometry",
-        stylers: [{ color: "#f1f5f9" }]
-    },
-    {
-        featureType: "road",
-        elementType: "geometry",
-        stylers: [{ color: "#ffffff" }]
-    },
-    {
-        featureType: "water",
-        elementType: "geometry",
-        stylers: [{ color: "#cbd5e1" }]
-    }
+    { featureType: "all", elementType: "geometry", stylers: [{ color: "#f1f5f9" }] },
+    { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
+    { featureType: "water", elementType: "geometry", stylers: [{ color: "#cbd5e1" }] }
 ];
 
-// Dark mode map styles
 const darkMapStyles = [
-    {
-        featureType: "all",
-        elementType: "geometry",
-        stylers: [{ color: "#1e293b" }]
-    },
-    {
-        featureType: "all",
-        elementType: "labels.text.stroke",
-        stylers: [{ color: "#0f172a" }]
-    },
-    {
-        featureType: "all",
-        elementType: "labels.text.fill",
-        stylers: [{ color: "#94a3b8" }]
-    },
-    {
-        featureType: "road",
-        elementType: "geometry",
-        stylers: [{ color: "#334155" }]
-    },
-    {
-        featureType: "water",
-        elementType: "geometry",
-        stylers: [{ color: "#0f172a" }]
-    }
+    { featureType: "all", elementType: "geometry", stylers: [{ color: "#1e293b" }] },
+    { featureType: "all", elementType: "labels.text.stroke", stylers: [{ color: "#0f172a" }] },
+    { featureType: "all", elementType: "labels.text.fill", stylers: [{ color: "#94a3b8" }] },
+    { featureType: "road", elementType: "geometry", stylers: [{ color: "#334155" }] },
+    { featureType: "water", elementType: "geometry", stylers: [{ color: "#0f172a" }] }
 ];
 
 const LiveMap = () => {
@@ -79,7 +45,7 @@ const LiveMap = () => {
     const [pins, setPins] = useState([]);
     const [filterType, setFilterType] = useState('all');
     const [showFilters, setShowFilters] = useState(false);
-    
+
     // Rerouting States
     const [routeOrigin, setRouteOrigin] = useState(null);
     const [routeDest, setRouteDest] = useState(null);
@@ -99,26 +65,29 @@ const LiveMap = () => {
     const [reportSuccess, setReportSuccess] = useState(null);
     const fileInputRef = React.useRef(null);
 
+    // Dynamic Backend URL for Vercel/Render compatibility
+    const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
     useEffect(() => {
         routingModeRef.current = routingMode;
     }, [routingMode]);
 
-    // Fetch Route
+    // Fetch Safe Route
     const fetchSafeRoute = async () => {
         if (!routeOrigin || !routeDest) return;
         setIsRouting(true);
         try {
-            const response = await fetch(`http://localhost:5001/api/routes/safe-path?startLat=${routeOrigin.lat}&startLng=${routeOrigin.lng}&endLat=${routeDest.lat}&endLng=${routeDest.lng}`);
+            const response = await fetch(`${API_BASE_URL}/routes/safe-path?startLat=${routeOrigin.lat}&startLng=${routeOrigin.lng}&endLat=${routeDest.lat}&endLng=${routeDest.lng}`);
             const data = await response.json();
-            
+
             if (data.success && data.route && data.route.geometry) {
                 if (routingLayerRef.current && typeof routingLayerRef.current.remove === 'function') {
                     routingLayerRef.current.remove();
                 }
-                
+
                 let coordsList = typeof data.route.geometry === 'string' ? JSON.parse(data.route.geometry).coordinates : data.route.geometry.coordinates;
                 const pathArr = coordsList.map(c => ({ lat: c[1], lng: c[0] }));
-                
+
                 routingLayerRef.current = mapplsClassObject.Polyline({
                     map: mapRef.current,
                     path: pathArr,
@@ -137,12 +106,10 @@ const LiveMap = () => {
             setIsRouting(false);
         }
     };
-    
+
     // Clear Route
     const clearRoute = () => {
-        if (routingLayerRef.current && typeof routingLayerRef.current.remove === 'function') {
-            routingLayerRef.current.remove();
-        }
+        if (routingLayerRef.current && typeof routingLayerRef.current.remove === 'function') routingLayerRef.current.remove();
         if (originMarkerRef.current && typeof originMarkerRef.current.remove === 'function') originMarkerRef.current.remove();
         if (destMarkerRef.current && typeof destMarkerRef.current.remove === 'function') destMarkerRef.current.remove();
         setRouteOrigin(null);
@@ -171,7 +138,8 @@ const LiveMap = () => {
             formData.append('lng', reportCoords.lng);
             formData.append('user_phone', '9999999999'); // Mock Session Phone
 
-            const response = await fetch('http://localhost:5001/api/tickets', {
+            // 🚀 Updated to proper API route
+            const response = await fetch(`${API_BASE_URL}/reports/create`, {
                 method: 'POST',
                 body: formData,
             });
@@ -180,7 +148,6 @@ const LiveMap = () => {
 
             if (response.ok) {
                 setReportSuccess(`Verified! AI identified: ${data.ai_data?.issue_type} (Severity: ${data.ai_data?.severity}). Ticket saved to Database.`);
-                // Dropping pin locally to reflect without full reload
                 setPins(prev => [...prev, data.ticket]);
                 setTimeout(() => {
                     setShowReportModal(false);
@@ -198,18 +165,16 @@ const LiveMap = () => {
 
     const navigate = useNavigate();
 
+    // Setup Initial Map Center
     useEffect(() => {
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
                 (position) => {
-                    setMapCenter({
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                    });
+                    setMapCenter({ lat: position.coords.latitude, lng: position.coords.longitude });
                 },
                 (error) => {
                     console.log("Location access denied or unavailable. Defaulting to India View.");
-                    setMapCenter({ lat: 21.1458, lng: 79.0882 });
+                    setMapCenter({ lat: 21.1458, lng: 79.0882 }); // Center of India
                 }
             );
         } else {
@@ -217,23 +182,28 @@ const LiveMap = () => {
         }
     }, []);
 
+    // 🚀 NEW: Fetch reports from PostgreSQL Backend instead of Firebase
     useEffect(() => {
-        const db = getDatabase(auth.app);
-        const reportsRef = ref(db, 'reports');
+        const fetchReports = async () => {
+            try {
+                // Fetch from our new backend route
+                const response = await fetch(`${API_BASE_URL}/reports`);
+                const data = await response.json();
 
-        onValue(reportsRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                const loadedPins = Object.keys(data)
-                    .map(key => ({
-                        id: key,
-                        ...data[key]
-                    }))
-                    .filter(pin => pin.location && pin.location.lat && pin.location.lng);
-
-                setPins(loadedPins);
+                if (data.reports) {
+                    const loadedPins = data.reports.filter(pin => pin.location && pin.location.lat && pin.location.lng);
+                    setPins(loadedPins);
+                }
+            } catch (error) {
+                console.error("Failed to fetch reports for Live Map:", error);
             }
-        });
+        };
+
+        fetchReports();
+
+        // Optional: Polling every 30 seconds to keep map live
+        const intervalId = setInterval(fetchReports, 30000);
+        return () => clearInterval(intervalId);
     }, []);
 
     // --- 1. Filter Logic ---
@@ -242,17 +212,17 @@ const LiveMap = () => {
             if (filterType === 'all') return pin.status !== 'Resolved';
             if (filterType === 'critical') {
                 return ['Fire & Safety', 'Medical/Ambulance', 'Police'].includes(pin.department) ||
-                    pin.priority === 'Critical' ||
+                    pin.severity === 'Critical' || pin.priority === 'Critical' ||
                     pin.type === 'SOS Emergency';
             }
-            return pin.type?.toLowerCase() === filterType;
+            return pin.issue_type?.toLowerCase().includes(filterType) || pin.type?.toLowerCase().includes(filterType);
         });
     }, [pins, filterType]);
 
     // --- 2. Stats Calculation ---
     const criticalCount = pins.filter(p =>
         ['Fire & Safety', 'Medical/Ambulance', 'Police'].includes(p.department) ||
-        p.priority === 'Critical' ||
+        p.severity === 'Critical' || p.priority === 'Critical' ||
         p.type === 'SOS Emergency'
     ).length;
 
@@ -272,11 +242,10 @@ const LiveMap = () => {
         return R * c;
     };
 
-    // --- 4. Clustering Logic (Applied on Filtered Pins) ---
+    // --- 4. Clustering Logic ---
     const clusters = React.useMemo(() => {
         const clustered = [];
         const visited = new Set();
-        // Use filteredPins so clustering reacts to filters
         const activePins = filteredPins;
 
         activePins.forEach((pin) => {
@@ -319,7 +288,7 @@ const LiveMap = () => {
             });
             newMap.on("load", () => {
                 mapRef.current = newMap;
-                
+
                 // Add user location marker
                 mapplsClassObject.Marker({
                     map: newMap,
@@ -330,9 +299,8 @@ const LiveMap = () => {
                 newMap.addListener('click', (e) => {
                     const rMode = routingModeRef.current;
                     const coords = { lat: e.lngLat.lat, lng: e.lngLat.lng };
-                    
+
                     if (!rMode) {
-                        // Open report modal instead of routing
                         setReportCoords(coords);
                         setShowReportModal(true);
                         setReportError(null);
@@ -340,7 +308,7 @@ const LiveMap = () => {
                         setReportFile(null);
                         return;
                     }
-                    
+
                     if (rMode === 'origin') {
                         setRouteOrigin(coords);
                         if (originMarkerRef.current && typeof originMarkerRef.current.remove === 'function') originMarkerRef.current.remove();
@@ -368,7 +336,7 @@ const LiveMap = () => {
 
     useEffect(() => {
         if (!mapRef.current || clusters.length === 0) return;
-        
+
         markersRef.current.forEach(m => {
             if (m && typeof m.remove === 'function') m.remove();
         });
@@ -391,16 +359,17 @@ const LiveMap = () => {
                 return;
             }
 
-            const isCritical = ['Fire & Safety', 'Medical/Ambulance', 'Police'].includes(pin.department) || pin.priority === 'Critical' || pin.type === 'SOS Emergency';
+            const isCritical = ['Fire & Safety', 'Medical/Ambulance', 'Police'].includes(pin.department) || pin.severity === 'Critical' || pin.priority === 'Critical' || pin.type === 'SOS Emergency';
 
+            const typeLabel = (pin.issue_type || pin.type || '').toLowerCase();
             let iconEmoji = '🚩';
-            if (pin.type?.toLowerCase().includes('pothole')) iconEmoji = '🚧';
-            else if (pin.type?.toLowerCase().includes('garbage')) iconEmoji = '🗑️';
-            else if (pin.type?.toLowerCase().includes('light')) iconEmoji = '💡';
-            else if (pin.type?.toLowerCase().includes('water')) iconEmoji = '💧';
-            else if (pin.type?.toLowerCase().includes('fire')) iconEmoji = '🔥';
-            else if (pin.type?.toLowerCase().includes('traffic')) iconEmoji = '🚦';
-            else if (pin.type?.toLowerCase().includes('sos')) iconEmoji = '🚨';
+            if (typeLabel.includes('pothole') || typeLabel.includes('road')) iconEmoji = '🚧';
+            else if (typeLabel.includes('garbage') || typeLabel.includes('waste')) iconEmoji = '🗑️';
+            else if (typeLabel.includes('light')) iconEmoji = '💡';
+            else if (typeLabel.includes('water') || typeLabel.includes('leak')) iconEmoji = '💧';
+            else if (typeLabel.includes('fire') || typeLabel.includes('gas')) iconEmoji = '🔥';
+            else if (typeLabel.includes('traffic') || typeLabel.includes('accident')) iconEmoji = '🚦';
+            else if (typeLabel.includes('sos') || typeLabel.includes('crime')) iconEmoji = '🚨';
 
             let htmlContent = '';
             if (isCritical) {
@@ -413,6 +382,11 @@ const LiveMap = () => {
                 map: mapRef.current,
                 position: { lat, lng },
                 html: htmlContent
+            });
+
+            // On Click Marker details
+            marker.addListener('click', () => {
+                setSelectedPin(pin);
             });
 
             markersRef.current.push(marker);
@@ -537,7 +511,7 @@ const LiveMap = () => {
                             <span>{routeDest ? 'B: Selected' : 'Set Destination (B)'}</span>
                             <div className="w-5 h-5 rounded-full bg-green-600 text-white flex justify-center items-center text-xs">B</div>
                         </button>
-                        
+
                         <div className="flex gap-2 mt-2">
                             <button
                                 onClick={fetchSafeRoute}
@@ -583,18 +557,18 @@ const LiveMap = () => {
 
                 {/* Selected Pin Detail Card */}
                 {selectedPin && (
-                    <div className="absolute bottom-6 left-6 right-6 bg-white dark:bg-slate-800 p-6 rounded-lg shadow-xl z-20 border border-slate-200 dark:border-slate-700">
+                    <div className="absolute bottom-6 left-6 right-6 md:left-1/2 md:-translate-x-1/2 md:max-w-md bg-white dark:bg-slate-800 p-6 rounded-lg shadow-xl z-20 border border-slate-200 dark:border-slate-700">
                         <div className="flex gap-4 items-start">
                             {/* Icon */}
                             <div className="w-14 h-14 bg-slate-100 dark:bg-slate-700 rounded-lg flex items-center justify-center text-3xl shrink-0">
-                                {selectedPin.type === 'pothole' ? '🚧' :
-                                    selectedPin.type === 'garbage' ? '🗑️' :
-                                        selectedPin.type?.includes('SOS') ? '🚨' : '🚩'}
+                                {selectedPin.issue_type?.toLowerCase().includes('pothole') ? '🚧' :
+                                    selectedPin.issue_type?.toLowerCase().includes('garbage') ? '🗑️' :
+                                        selectedPin.issue_type?.includes('SOS') ? '🚨' : '🚩'}
                             </div>
 
                             {/* Details */}
                             <div className="flex-1 min-w-0">
-                                <h3 className="font-bold text-slate-900 dark:text-white text-lg capitalize mb-1">{selectedPin.type || 'Issue'}</h3>
+                                <h3 className="font-bold text-slate-900 dark:text-white text-lg capitalize mb-1">{selectedPin.issue_type || selectedPin.type || 'Issue'}</h3>
                                 <p className="text-sm text-slate-600 dark:text-slate-400 mb-3 line-clamp-2">
                                     {selectedPin.location?.address || 'Location information unavailable'}
                                 </p>
@@ -611,12 +585,12 @@ const LiveMap = () => {
                             </div>
 
                             {/* Actions */}
-                            <div className="flex gap-2 shrink-0">
+                            <div className="flex gap-2 shrink-0 flex-col sm:flex-row">
                                 <button
-                                    onClick={() => navigate(`/civic/report`)}
+                                    onClick={() => navigate(`/civic/my-reports`)}
                                     className="px-5 py-3 bg-blue-600 dark:bg-blue-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors"
                                 >
-                                    Details
+                                    View
                                 </button>
                                 <button
                                     onClick={() => setSelectedPin(null)}
@@ -641,12 +615,12 @@ const LiveMap = () => {
                                     <X size={24} />
                                 </button>
                             </div>
-                            
+
                             <form onSubmit={handleReportSubmit} className="p-6 flex flex-col gap-4">
                                 <p className="text-sm text-slate-600 dark:text-slate-400">
                                     Submit a photo of the issue at your selected location. Our AI Forensics system will verify it automatically.
                                 </p>
-                                
+
                                 <div className="p-4 bg-slate-100 dark:bg-slate-900 rounded-lg text-xs font-mono text-slate-500 flex justify-between">
                                     <span>Lat: {reportCoords?.lat.toFixed(5)}</span>
                                     <span>Lng: {reportCoords?.lng.toFixed(5)}</span>
@@ -654,14 +628,14 @@ const LiveMap = () => {
 
                                 <div>
                                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Upload Photo</label>
-                                    <input 
-                                        type="file" 
+                                    <input
+                                        type="file"
                                         accept="image/*"
                                         ref={fileInputRef}
                                         onChange={(e) => setReportFile(e.target.files[0])}
                                         className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/30 dark:file:text-blue-400"
                                     />
-                                    {reportFile && <p className="mt-2 text-xs text-green-600 font-semibold flex items-center gap-1"><CheckCircle size={14}/> {reportFile.name}</p>}
+                                    {reportFile && <p className="mt-2 text-xs text-green-600 font-semibold flex items-center gap-1"><CheckCircle size={14} /> {reportFile.name}</p>}
                                 </div>
 
                                 {reportError && (
@@ -669,23 +643,19 @@ const LiveMap = () => {
                                         🚨 {reportError}
                                     </div>
                                 )}
-                                
+
                                 {reportSuccess && (
                                     <div className="p-3 bg-green-100 text-green-700 rounded-lg text-sm font-semibold border border-green-200">
                                         ✅ {reportSuccess}
                                     </div>
                                 )}
 
-                                <button 
-                                    type="submit" 
+                                <button
+                                    type="submit"
                                     disabled={isReporting || !reportFile || reportSuccess}
                                     className="mt-2 w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors disabled:opacity-50 flex justify-center items-center"
                                 >
-                                    {isReporting ? (
-                                        <>AI is Analyzing...</>
-                                    ) : (
-                                        'Submit to AI Forensics'
-                                    )}
+                                    {isReporting ? 'AI is Analyzing...' : 'Submit to AI Forensics'}
                                 </button>
                             </form>
                         </div>
