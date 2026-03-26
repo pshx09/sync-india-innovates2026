@@ -76,9 +76,12 @@ const Broadcast = () => {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
+                    // 🚀 YEH RAHA MAIN FIX: incidentId bhejna zaroori hai!
+                    incidentId: location.state?.incidentId || null,
                     area: target,
                     type,
                     message,
+                    status: 'In Progress', // Backend ko batane ke liye ki status update karna hai
                     department: currentUser?.department || 'General',
                     sender: `${currentUser?.firstName || ''} ${currentUser?.lastName || currentUser?.name || 'Admin'}`.trim(),
                     reach: Math.floor(Math.random() * 5000) + 500
