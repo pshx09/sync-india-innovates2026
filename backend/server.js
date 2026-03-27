@@ -25,10 +25,13 @@ const WHAPI_TOKEN = process.env.WHAPI_TOKEN;
 
 
 // 🚨 VERCEL-READY CORS SETUP 🚨
+// 🚨 VERCEL-READY CORS SETUP 🚨
 app.use(cors({
     origin: [
         'http://localhost:5173', // Localhost testing ke liye
-        'https://sync-india-innovates2026.vercel.app' // Aapka Live Vercel link! (End mein slash '/' mat lagana)
+        'https://sync-india-innovates2026.vercel.app', // Aapka Live Vercel link!
+        'https://nagaralerthub.in',       // 👈 NAYA DOMAIN ADD KIYA
+        'https://www.nagaralerthub.in'    // 👈 WWW WALA BHI ADD KIYA
     ],
     credentials: true
 }));
