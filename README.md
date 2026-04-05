@@ -7,7 +7,7 @@
 ## 🚀 Key Features
 
 *   **🤖 AI Forensic Analysis**: automatically analyzes uploaded images using **Nagar AI Engine** to detect:
-    *   Deepfakes or AI-generated images.
+    *   Deepfakes or AI-generated images. 
     *   Screenshots or non-civic content.
     *   Severity of the issue (High/Medium/Low).
 *   **💬 WhatsApp Bot Integration**: Citizens can simply send a photo to the official number to report a pothole, garbage dump, or broken streetlight. The bot handles location collection and status updates.
