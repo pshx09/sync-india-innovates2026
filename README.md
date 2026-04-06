@@ -1,7 +1,7 @@
 # 🏙️ Nagar Alert Hub (SYNC)
 
 **Nagar Alert Hub** is a Next-Gen Civic Issue Reporting Platform designed to bridge the gap between citizens and municipal authorities. It leverages **Artificial Intelligence** to verify reports and provides a seamless experience via **WhatsApp** and a **Web Dashboard**. 
-
+ 
 ---
 
 ## 🚀 Key Features
