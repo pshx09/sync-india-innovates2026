@@ -1,13 +1,13 @@
 # 🏙️ Nagar Alert Hub (SYNC)
 
-**Nagar Alert Hub** is a Next-Gen Civic Issue Reporting Platform designed to bridge the gap between citizens and municipal authorities. It leverages **Artificial Intelligence** to verify reports and provides a seamless experience via **WhatsApp** and a **Web Dashboard**.
-
+**Nagar Alert Hub** is a Next-Gen Civic Issue Reporting Platform designed to bridge the gap between citizens and municipal authorities. It leverages **Artificial Intelligence** to verify reports and provides a seamless experience via **WhatsApp** and a **Web Dashboard**. 
+ 
 ---
 
 ## 🚀 Key Features
 
 *   **🤖 AI Forensic Analysis**: automatically analyzes uploaded images using **Nagar AI Engine** to detect:
-    *   Deepfakes or AI-generated images.
+    *   Deepfakes or AI-generated images. 
     *   Screenshots or non-civic content.
     *   Severity of the issue (High/Medium/Low).
 *   **💬 WhatsApp Bot Integration**: Citizens can simply send a photo to the official number to report a pothole, garbage dump, or broken streetlight. The bot handles location collection and status updates.
