@@ -64,7 +64,7 @@ export default function Login() {
         setIsLoading(true);
         try {
             const googleResponse = await googleLogin();
-            
+
             const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -80,7 +80,7 @@ export default function Login() {
             localStorage.setItem('token', data.token);
             const role = data.role || data.user?.role || 'citizen';
             setJwtUser(data.user, role);
-            
+
             toast.success('Logged in with Google!');
             setTimeout(() => {
                 navigate(role === 'admin' ? '/admin/dashboard' : '/civic/dashboard', { replace: true });
@@ -200,13 +200,13 @@ export default function Login() {
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <button
                                 type="submit"
                                 disabled={isLoading}
                                 className="w-full flex justify-center items-center gap-2 py-4 px-4 border border-transparent rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed group"
                             >
-                                {isLoading ? <Loader2 className="animate-spin w-5 h-5" /> : ( <>Secure Login <ShieldCheck className="w-4 h-4 ml-1 group-hover:scale-110 transition-transform" /></> )}
+                                {isLoading ? <Loader2 className="animate-spin w-5 h-5" /> : (<>Secure Login <ShieldCheck className="w-4 h-4 ml-1 group-hover:scale-110 transition-transform" /></>)}
                             </button>
 
                             <div className="relative my-6">
@@ -222,7 +222,7 @@ export default function Login() {
                                 Continue with Google
                             </button> */}
                             <button type="button" disabled title="Coming Soon" className="w-full flex justify-center items-center border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold py-3.5 bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 cursor-not-allowed transition-all">
-                                Continue with Google (Coming Soon)
+                                DigiLocker (Coming Soon)
                             </button>
                         </form>
 
