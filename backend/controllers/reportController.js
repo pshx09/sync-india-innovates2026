@@ -753,8 +753,25 @@ exports.createBroadcast = async (req, res) => {
                 [newStatus, incidentId]
             );
 
-            // WHATSAPP WALON KE LIYE: Direct WhatsApp message bhejein
-            if (ticket.user_phone) {
+            /// WHATSAPP WALON KE LIYE: Direct WhatsApp message bhejein
+            if (ticket.user_phone && ticket.user_phone.trim() !== '') {
+
+                // --- BULLETPROOF PHONE FORMATTER START ---
+                let cleanPhone = String(ticket.user_phone).replace(/\D/g, '');
+
+                if (cleanPhone.length === 10) {
+                    cleanPhone = `91${cleanPhone}`;
+                } else if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
+                    cleanPhone = cleanPhone; // All good
+                } else {
+                    console.error(`❌ ERROR: Invalid phone number format in DB: ${ticket.user_phone}`);
+                    return res.status(400).json({ error: "Cannot broadcast. Invalid phone number format in database." });
+                }
+
+                const formattedPhone = `${cleanPhone}@c.us`;
+                console.log(`🚀 FINAL FORMATTED CHAT ID: ${formattedPhone}`);
+                // --- BULLETPROOF PHONE FORMATTER END ---
+
                 // Dynamic message format
                 const waMessage = `📢 *Update on your Report #${ticket.id.toString().slice(-6)}*\n\n` +
                     `📋 *Issue:* ${ticket.issue_type}\n` +
@@ -762,12 +779,12 @@ exports.createBroadcast = async (req, res) => {
                     `👨‍💼 *Message from Department:*\n"${message}"\n\n` +
                     `*Please take necessary precautions.* Our team is actively monitoring the situation. 🏛️`;
 
-                // Format phone number correctly for Green API
-                const formattedPhone = ticket.user_phone.includes('@c.us') ? ticket.user_phone : `91${ticket.user_phone.replace(/\D/g, '').slice(-10)}@c.us`;
-
                 // WhatsApp message shoot!
                 await sendWhatsAppMessage(formattedPhone, waMessage);
                 console.log(`[Broadcast] Message sent to WhatsApp: ${formattedPhone}`);
+            } else {
+                console.warn(`⚠️ WARNING: No phone number found for ticket ${incidentId}. Message not sent.`);
+                return res.status(400).json({ error: "No valid phone number linked to this report to send a broadcast." });
             }
 
             return res.status(200).json({
